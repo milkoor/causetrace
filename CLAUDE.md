@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 causetrace is an Agent Runtime Observation primitive — it captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs via `parent_event_id` chains. Instead of flat timelines, every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
 
+## Before making changes
+
+Read `docs/dependency-map.md` first — it shows which modules depend on what.
+Use it to assess change impact before modifying any file.
+
 ## Build & test
 
 ```bash
@@ -80,5 +85,6 @@ See `docs/runtime-principles.md` for the full set. Core tenets:
 - **Schema evolution** is tracked reactively in `docs/schema/` (INDEX.md for evolution log, SCHEMA.md for field definitions, pressure-log.md for trace data that strains the current model).
 - **Multi-parent causality** uses comma-separated `parent_event_id` (e.g. `"root_a,root_b"` ) for fan-in DAGs. `_parse_parents()` splits on comma.
 - **Storage** is append-only JSONL files at `~/.causetrace/data/<session_id>.jsonl`. No DB dependency.
+- **Dependency map** at `docs/dependency-map.md` — check before modifying any module to assess change impact.
 - **Heuristic causality** (`infer_relations()` in `causality.py`) is an explicit fallback for log-based agents, clearly documented as lower fidelity.
 - **Data model**: `ToolEvent` has event_id, parent_event_id, session_id, event_type, caused_by, model, provider, agent, tool_name, tool_input, tool_output, timestamp, duration_ms.
