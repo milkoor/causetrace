@@ -50,17 +50,20 @@ def main() -> None:
             return
 
         duration = (time.time() - pre_data["start_time"]) * 1000
+        parent_id = pre_data.get("parent_event_id")
         tool_result = hook_input.get("tool_result", {})
 
         recorder = TraceRecorder(session_id=session_id)
-        recorder.record_call(
+        event = recorder.record_call(
             tool_name=tool_name,
             tool_input=_shorten_input(tool_input),
             tool_output=_shorten_output(tool_result),
+            parent_event_id=parent_id,
             model=_CC_MODEL,
             provider=_CC_PROVIDER,
             duration_ms=duration,
         )
+        _save_last_event_id(session_id, event.event_id)
 
     json.dump({"continue": True}, sys.stdout)
 
@@ -80,7 +83,6 @@ def _load_pre(session_id: str, tool_name: str) -> dict | None:
         return None
     try:
         data = json.loads(path.read_text())
-        _save_last_event_id(session_id, data.get("parent_event_id", ""))
         path.unlink()
         return data
     except (json.JSONDecodeError, OSError):
