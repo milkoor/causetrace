@@ -21,8 +21,6 @@ Entries are raw observations. No judgment. No action required.
 
 ## Entries
 
-*(No entries yet. This file exists to capture the first pressure point.)*
-
 ---
 
 ## Pressure #001
@@ -111,3 +109,50 @@ multiple independent causal trees that match semantic structure.
 
 No schema change needed. This is a runtime signal gap. Revisit when Claude Code
 exposes turn boundaries in hook events.
+
+---
+
+## Pressure #003
+
+**Date**: 2026-05-14
+**Agent**: Codex CLI + OpenCode (native parsers)
+**Sessions**: Codex 019e2553-ade5 (465 lines → 116 events), OpenCode from DB (91 events)
+
+### Problem
+
+Two new runtime formats were discovered that don't fit the original action/observation model:
+
+**Codex CLI** (real rollout format):
+- `response_item/function_call` with `name`, `arguments`, `call_id`
+- `response_item/function_call_output` paired by `call_id`
+- `event_msg/agent_message` for reasoning
+- No `mcp_tool_call_begin/end` or `exec_command_begin/end` as assumed from protocol.rs
+
+**OpenCode** (SQLite DB):
+- `part` table with `type="reasoning"` and `type="tool"` entries
+- `message.parentID` provides native causal tree structure
+- Timestamps are stored as milliseconds or microseconds with scale detection needed
+
+### What the schema got right
+
+- `tool_name`, `tool_input`, `tool_output` map cleanly to both formats
+- `parent_event_id` works for both linear chains (Codex) and tree structures (OpenCode)
+- `event_type` ("reasoning" / "tool_call") is sufficient for both
+- `call_id` pairing maps naturally to existing sequential parent-child linking
+
+### What the schema couldn't express
+
+- **Codex tool looping**: The proxy+DeepSeek combo caused repeated `exec_command` calls in a loop (>100 iterations). The schema has no way to flag "suspicious repetition" vs "genuine multi-step workflow."
+- **Paired call_id semantics**: `function_call` → `function_call_output` is a natural pair, but the schema collapses them into a single `tool_call` event. The pairing information (which call produced which output) is implicit in chronological ordering, not explicit.
+- **call_id as cross-reference**: OpenCode and Codex both use call IDs for pairing, but this data is lost during schema translation.
+
+### What would help
+
+- A `pair_id` or `group_id` field to explicitly track begin/end or call/result pairing
+- A `repetition_count` or `loop_detected` heuristic field for sessions with identical consecutive tool calls (Codex proxy quirk)
+
+### Action
+
+No schema change for v0.1.2. The current ToolEvent fields are expressive enough for
+causal chain construction. The pairing gap is noted for v0.2 if cross-referencing
+becomes a priority.

@@ -32,26 +32,37 @@ causetrace sessions                 # List recorded sessions
 causetrace export <session_id>      # Export as JSON
 causetrace replay [session_id]      # Replay trace with provenance
 causetrace why <session_id> <eid>   # Trace causal chain from event
-causetrace opencode [--save]        # Scan OpenCode logs
-causetrace aider [--save] -- [args] # Run aider with tracing
-causetrace continue [--save]        # Scan Continue.dev logs
-causetrace codex [--save]           # Scan OpenAI Codex CLI logs
-causetrace copilot [--save]         # Scan GitHub Copilot agent logs
+causetrace enrich-sessions                # List Claude Code project sessions
+causetrace enrich <session_id> [--save]   # Enrich from Claude Code project session
+causetrace enrich-opencode-sessions       # List OpenCode DB sessions
+causetrace enrich-opencode <id> [--save]  # Enrich from OpenCode DB session
+causetrace enrich-codex-sessions          # List Codex CLI rollout sessions
+causetrace enrich-codex <id> [--save]     # Enrich from Codex CLI rollout session
+causetrace opencode [--save]              # Scan OpenCode logs
+causetrace aider [--save] -- [args]       # Run aider with tracing
+causetrace continue [--save]              # Scan Continue.dev logs
+causetrace codex [--save]                 # Scan OpenAI Codex CLI logs
+causetrace copilot [--save]               # Scan GitHub Copilot agent logs
 ```
 
 ## Architecture
 
 - **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), append-only JSONL storage (`JSONStore`), tree/DAG builders, renderers, `ReplayEngine`.
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
-- **`causetrace/cli.py`** — argparse-based CLI dispatching to 12 subcommands.
+- **`causetrace/cli.py`** — argparse-based CLI dispatching to 18 subcommands.
 - **`causetrace/hooks/`** — Agent-specific bridges and tailers:
   - `claude_code.py` — Claude Code PreToolUse/PostToolUse hook bridge
-  - `opencode_tailer.py` — OpenCode tool.registry log parser
+  - `claude_project_parser.py` — Claude Code project session parser (enrich)
+  - `opencode_parser.py` — OpenCode SQLite DB session parser (enrich)
+  - `codex_parser.py` — Codex CLI rollout JSONL parser (enrich)
+  - `opencode_tailer.py` — OpenCode tool.registry log parser (legacy)
   - `aider_bridge.py` — Aider subprocess wrapper (stdout parsing)
   - `continue_tailer.py` — Continue.dev JSON log tailer
-  - `codex_tailer.py` — Codex CLI JSONL session log parser
+  - `codex_tailer.py` — Codex CLI JSONL session log parser (legacy, use enrich)
   - `copilot_tailer.py` — GitHub Copilot VS Code extension host log parser
 - **`tests/test_invariants.py`** — Tests runtime invariants (serialization roundtrip, causality acyclicity, append-only integrity, renderer stability), not business logic.
+- **`tests/test_enrich.py`** — Tests for Claude Code project session parser.
+- **`tests/test_opencode_enrich.py`** — Tests for OpenCode DB session parser.
 
 ## Runtime principles
 

@@ -85,14 +85,26 @@ $ causetrace graph ses_3e23bcc8
 | **OpenCode** | 日志监听 | 解析 `~/.local/share/opencode/log/*.log` 中的 tool.registry 条目 |
 | **Aider** | 进程包装 | 以子进程运行 `aider`，从 stdout 解析工具调用 |
 | **Continue.dev** | 日志监听 | 解析 `~/.continue/logs/core.log` 中的 JSON 工具调用条目 |
-| **Codex CLI** | 日志监听 | 解析 `~/.codex/sessions/.../rollout-*.jsonl` 中的 action/observation |
+| **Codex CLI** | Rollout 解析 | 解析 `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` 通过 `call_id` 配对 |
 | **GitHub Copilot** | 日志监听 | 解析 `~/.config/Code/logs/` 中 Copilot 扩展的 host 日志 |
 
 ```bash
 # Claude Code — Hook 自动记录
 causetrace tale <session_id>
 
-# 基于日志的 Agent — 扫描并保存
+# Claude Code — 从 project 会话提取 reasoning 块
+causetrace enrich-sessions
+causetrace enrich <session_id> --save
+
+# OpenCode — 从数据库会话提取 reasoning + 工具调用
+causetrace enrich-opencode-sessions
+causetrace enrich-opencode <session_id> --save
+
+# Codex CLI — 从 rollout 会话构建因果链
+causetrace enrich-codex-sessions
+causetrace enrich-codex <session_id> --save
+
+# 基于日志的 Agent — 扫描并保存（启发式因果推断）
 causetrace opencode --save
 causetrace continue --save
 causetrace codex --save
@@ -106,7 +118,9 @@ causetrace aider -- --model gpt-4 --yes "修复这个bug"
 
 - **Claude Code** — 精度最高，通过 Pre/Post hooks 捕获完整因果关系
 - **Aider** — `causetrace aider --save -- [aider 参数]` 包装 CLI；从输出尽力解析
-- **Continue.dev**、**Codex CLI**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
+- **Codex CLI (enrich)** — 解析真实 rollout 格式：`function_call`/`function_call_output` 通过 `call_id` 配对
+- **OpenCode (enrich)** — 从 SQLite DB 提取 reasoning + 工具调用，带因果父子链接
+- **Continue.dev**、**Codex CLI (scan)**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
 - 所有基于日志的 Agent 采用启发式因果推断 —— 事件间的时间戳决定父子链
 
 ---
@@ -184,6 +198,12 @@ causetrace opencode --save
 | `causetrace export <id>` | 导出 JSON |
 | `causetrace replay <id>` | 回放溯源 |
 | `causetrace why <id> <eid>` | 回溯因果链 |
+| `causetrace enrich-sessions` | 列出 Claude Code project 会话 |
+| `causetrace enrich <id> [--save]` | 从 Claude Code 会话提取 |
+| `causetrace enrich-opencode-sessions` | 列出 OpenCode DB 会话 |
+| `causetrace enrich-opencode <id> [--save]` | 从 OpenCode DB 会话提取 |
+| `causetrace enrich-codex-sessions` | 列出 Codex CLI rollout 会话 |
+| `causetrace enrich-codex <id> [--save]` | 从 Codex CLI rollout 提取 |
 | `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
 | `causetrace aider [--save] -- [args]` | 带追踪运行 Aider |
 | `causetrace continue [--save]` | 扫描 Continue.dev 日志 |
@@ -226,10 +246,13 @@ causetrace opencode --save
 | `causetrace/cli.py` | argparse CLI，12 个子命令 |
 | `causetrace/hooks/` | 各 Agent 的桥接与监听器 |
 | `causetrace/hooks/claude_code.py` | Claude Code hook 桥接 |
+| `causetrace/hooks/claude_project_parser.py` | Claude Code project 会话解析器 |
+| `causetrace/hooks/opencode_parser.py` | OpenCode SQLite DB 会话解析器 |
+| `causetrace/hooks/codex_parser.py` | Codex CLI rollout JSONL 解析器 |
 | `causetrace/hooks/opencode_tailer.py` | OpenCode 日志监听 |
 | `causetrace/hooks/aider_bridge.py` | Aider 子进程包装 |
 | `causetrace/hooks/continue_tailer.py` | Continue.dev 日志监听 |
-| `causetrace/hooks/codex_tailer.py` | Codex CLI 日志监听 |
+| `causetrace/hooks/codex_tailer.py` | Codex CLI 日志监听（旧版，建议用 enrich） |
 | `causetrace/hooks/copilot_tailer.py` | GitHub Copilot 日志监听 |
 
 ---

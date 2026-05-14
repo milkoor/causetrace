@@ -85,14 +85,26 @@ Fan-in DAGs visualize convergent causation — one tool consuming multiple prior
 | **OpenCode** | Log tailing | Parses `~/.local/share/opencode/log/*.log` for tool.registry entries |
 | **Aider** | Process wrapper | Runs `aider` as subprocess, parses stdout for tool calls |
 | **Continue.dev** | Log tailing | Parses `~/.continue/logs/core.log` for JSON tool call entries |
-| **Codex CLI** | Log tailing | Parses `~/.codex/sessions/.../rollout-*.jsonl` for actions/observations |
+| **Codex CLI** | Rollout parser | Parses `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` paired by `call_id` |
 | **GitHub Copilot** | Log tailing | Parses `~/.config/Code/logs/` extension host logs for Copilot tool calls |
 
 ```bash
 # Claude Code — automatic via hooks
 causetrace tale <session_id>
 
-# Log-based agents — scan and save
+# Claude Code — enrich project sessions with reasoning blocks
+causetrace enrich-sessions
+causetrace enrich <session_id> --save
+
+# OpenCode — enrich DB sessions with reasoning blocks
+causetrace enrich-opencode-sessions
+causetrace enrich-opencode <session_id> --save
+
+# Codex CLI — enrich rollout sessions with causal chains
+causetrace enrich-codex-sessions
+causetrace enrich-codex <session_id> --save
+
+# Log-based agents — scan and save (heuristic causality)
 causetrace opencode --save
 causetrace continue --save
 causetrace codex --save
@@ -105,7 +117,9 @@ Usage notes:
 
 - **Claude Code** — most precise, captures full causality via Pre/Post hooks
 - **Aider** — `causetrace aider --save -- [aider args]` wraps the CLI; best-effort parsing from output
-- **Continue.dev**, **Codex CLI**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
+- **Codex CLI (enrich)** — parses real rollout format: `function_call`/`function_call_output` paired by `call_id`, `agent_message` for reasoning
+- **OpenCode (enrich)** — extracts reasoning + tool calls from SQLite DB with causal parent-child links
+- **Continue.dev**, **Codex CLI (scan)**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
 - All log-based agents infer causality heuristically — timestamps between events determine parent→child chains
 
 ---
@@ -183,6 +197,12 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace export <id>` | Export as JSON |
 | `causetrace replay <id>` | Replay with provenance |
 | `causetrace why <id> <eid>` | Trace causal chain from event |
+| `causetrace enrich-sessions` | List Claude Code project sessions |
+| `causetrace enrich <id> [--save]` | Enrich from Claude Code project session |
+| `causetrace enrich-opencode-sessions` | List OpenCode DB sessions |
+| `causetrace enrich-opencode <id> [--save]` | Enrich from OpenCode DB session |
+| `causetrace enrich-codex-sessions` | List Codex CLI rollout sessions |
+| `causetrace enrich-codex <id> [--save]` | Enrich from Codex CLI rollout session |
 | `causetrace opencode [--save]` | Scan OpenCode logs |
 | `causetrace aider [--save] -- [args]` | Run aider with tracing |
 | `causetrace continue [--save]` | Scan Continue.dev logs |
@@ -225,10 +245,13 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace/cli.py` | argparse CLI dispatching to 12 subcommands |
 | `causetrace/hooks/` | Agent-specific bridges and tailers |
 | `causetrace/hooks/claude_code.py` | Claude Code hook bridge |
+| `causetrace/hooks/claude_project_parser.py` | Claude Code project session parser |
+| `causetrace/hooks/opencode_parser.py` | OpenCode SQLite DB session parser |
+| `causetrace/hooks/codex_parser.py` | Codex CLI rollout JSONL parser |
 | `causetrace/hooks/opencode_tailer.py` | OpenCode log tailer |
 | `causetrace/hooks/aider_bridge.py` | Aider subprocess wrapper |
 | `causetrace/hooks/continue_tailer.py` | Continue.dev log tailer |
-| `causetrace/hooks/codex_tailer.py` | Codex CLI log tailer |
+| `causetrace/hooks/codex_tailer.py` | Codex CLI log tailer (legacy, use enrich) |
 | `causetrace/hooks/copilot_tailer.py` | GitHub Copilot log tailer |
 
 ---
