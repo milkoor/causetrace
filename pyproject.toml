@@ -5,11 +5,44 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "causetrace"
 version = "0.1.0"
-description = "Agent Runtime Trace SDK — observe, replay, understand agent behavior"
+description = "Causal traceability SDK for AI agent runtimes — observe, replay, understand agent behavior"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+
+authors = [
+    {name = "milkoor"},
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Monitoring",
+]
+
+keywords = [
+    "agent", "trace", "observability", "causality", "llm",
+    "claude", "opencode", "runtime", "monitoring", "debugging",
+]
+
+[project.urls]
+Homepage = "https://github.com/milkoor/causetrace"
+Repository = "https://github.com/milkoor/causetrace"
+BugTracker = "https://github.com/milkoor/causetrace/issues"
 
 [project.scripts]
 causetrace = "causetrace.cli:cli"
 
 [tool.setuptools.packages.find]
 include = ["causetrace*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
