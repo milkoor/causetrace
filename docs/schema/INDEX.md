@@ -1,6 +1,7 @@
 # Causetrace Schema Evolution Log
 
 > See [SCHEMA.md](SCHEMA.md) for formal field definitions.
+> [pressure-log.md](pressure-log.md) captures real trace data that strains the current schema.
 >
 > Schema is not designed upfront — it emerges from real Runtime data.
 > This log records every field addition, change, or removal, along with the

@@ -41,3 +41,17 @@ Formal field definitions for the causetrace data model. Version: v0.1.
 1. Append-only: events are never mutated after storage. Each event is a single JSON line.
 2. No orphan references: `parent_event_id(s)` should reference existing `event_id`s within the same session (enforced by test `test_causality_no_orphan_references`).
 3. Event order: loaded events are sorted by `timestamp` for deterministic rendering.
+
+## Schema Policy
+
+### event_type 准入原则
+
+`event_type` 是 first-class 分类字段，只应包含被 >=3 个独立 runtime 验证稳定出现的类型。
+新的事件分类应先在 consumer 侧以标签或 metadata 形式试验，不提升到 `event_type`。
+
+```
+层级:  event_type        ← first-class, 仅放已验证稳定的类型
+       metadata["subtype"]  ← 试验性分类, 不污染 schema
+```
+
+当前已批准的 `event_type` 值: `tool_call`, `reasoning`, `context_update`, `user_input`。
