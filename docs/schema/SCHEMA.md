@@ -6,6 +6,7 @@ Formal field definitions for the causetrace data model. Version: v0.1.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `schema_version` | `str` | always | Schema version string (currently `"0.1"`). Used for future migration safety. |
 | `event_id` | `str` (uuid hex, 12 chars) | always | Unique event identifier |
 | `tool_name` | `str` | always | Tool invoked: e.g. `"Bash"`, `"Read"`, `"Write"`, `"Edit"`, `"Grep"`, `"Glob"`, `"WebFetch"` |
 | `tool_input` | `dict` or `str` | always | Serialized input arguments |

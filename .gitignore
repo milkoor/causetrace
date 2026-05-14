@@ -11,12 +11,6 @@ venv/
 *.pre
 .causetrace/
 
-# Development / review artifacts
-.sisyphus/
-CODE_REVIEW.md
-COMPETITIVE_ANALYSIS.md
-REVIEW_REPORT.md
-
 # Symlinks to external projects
 agenttrace
 
