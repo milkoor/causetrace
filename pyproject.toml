@@ -41,6 +41,9 @@ BugTracker = "https://github.com/milkoor/causetrace/issues"
 [project.scripts]
 causetrace = "causetrace.cli:cli"
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
 [tool.setuptools.packages.find]
 include = ["causetrace*"]
 
