@@ -6,6 +6,9 @@ import sys
 from datetime import datetime
 
 from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain, validate_session
+from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
+from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
+from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
 from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
@@ -60,6 +63,27 @@ def cli(argv: list[str] | None = None) -> None:
     p_why.add_argument("session_id", help="Session ID")
     p_why.add_argument("event_id", help="Event ID to trace from")
     p_why.add_argument("--depth", type=int, default=20, help="Max chain depth (default: 20)")
+
+    sub.add_parser("enrich-sessions", help="List available Claude Code project sessions")
+
+    p_enrich = sub.add_parser("enrich", help="Enrich trace from Claude Code project session (extracts reasoning)")
+    p_enrich.add_argument("session_id", help="Claude Code project session ID")
+    p_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
+
+    sub.add_parser("enrich-opencode-sessions", help="List available OpenCode DB sessions")
+
+    p_oc_enrich = sub.add_parser("enrich-opencode", help="Enrich trace from OpenCode DB session (extracts reasoning)")
+    p_oc_enrich.add_argument("session_id", help="OpenCode session ID")
+    p_oc_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_oc_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
+
+    sub.add_parser("enrich-codex-sessions", help="List available Codex CLI rollout sessions")
+
+    p_cx_enrich = sub.add_parser("enrich-codex", help="Enrich trace from Codex CLI rollout session (extracts reasoning)")
+    p_cx_enrich.add_argument("session_id", help="Codex session ID")
+    p_cx_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_cx_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     p_val = sub.add_parser("validate", help="Validate session integrity")
     p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
@@ -169,6 +193,110 @@ def cli(argv: list[str] | None = None) -> None:
         target = by_id.get(args.event_id)
         print(f"Causal chain for {target.tool_name}({args.event_id[:8]}) in {sid}\n")
         print(TimelineRenderer.render_chain(chain))
+
+    elif args.command == "enrich-sessions":
+        sessions = list_claude_sessions()
+        if not sessions:
+            print("No Claude Code project sessions found.")
+            return
+        print(f"Claude Code project sessions ({len(sessions)}):")
+        for s in sessions:
+            print(f"  {s['session_id']}  ({s['project']}, {s['lines']} lines)")
+
+    elif args.command == "enrich":
+        events = enrich_session(args.session_id)
+        if not events:
+            print(f"No events extracted from session: {args.session_id}")
+            sys.exit(1)
+
+        reasoning = sum(1 for e in events if e.event_type == "reasoning")
+        tool_calls = sum(1 for e in events if e.event_type == "tool_call")
+        rooted = sum(1 for e in events if e.parent_event_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Events:   {len(events)}")
+        print(f"  Reasoning: {reasoning}")
+        print(f"  Tool calls: {tool_calls}")
+        print(f"  Rooted:   {rooted}")
+
+        if args.output:
+            print()
+            TimelineRenderer.print_timeline(events)
+
+        if args.save:
+            for ev in events:
+                store.append(args.session_id, ev)
+            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+
+    elif args.command == "enrich-opencode-sessions":
+        sessions = list_opencode_sessions()
+        if not sessions:
+            print("No OpenCode sessions found in DB.")
+            return
+        print(f"OpenCode sessions ({len(sessions)}):")
+        for s in sessions[:30]:
+            print(f"  {s['session_id']}  ({s['slug']}, {s['title'][:60]})")
+        if len(sessions) > 30:
+            print(f"  ... and {len(sessions) - 30} more")
+
+    elif args.command == "enrich-opencode":
+        events = enrich_opencode_session(args.session_id)
+        if not events:
+            print(f"No events extracted from session: {args.session_id}")
+            sys.exit(1)
+
+        reasoning = sum(1 for e in events if e.event_type == "reasoning")
+        tool_calls = sum(1 for e in events if e.event_type == "tool_call")
+        rooted = sum(1 for e in events if e.parent_event_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Events:    {len(events)}")
+        print(f"  Reasoning: {reasoning}")
+        print(f"  Tool calls: {tool_calls}")
+        print(f"  Rooted:    {rooted}")
+
+        if args.output:
+            print()
+            TimelineRenderer.print_timeline(events)
+
+        if args.save:
+            for ev in events:
+                store.append(args.session_id, ev)
+            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+
+    elif args.command == "enrich-codex-sessions":
+        sessions = list_codex_sessions()
+        if not sessions:
+            print("No Codex CLI rollout sessions found.")
+            return
+        print(f"Codex sessions ({len(sessions)}):")
+        for s in sessions[:20]:
+            print(f"  {s['session_id']}  ({s['lines']} lines)")
+        if len(sessions) > 20:
+            print(f"  ... and {len(sessions) - 20} more")
+
+    elif args.command == "enrich-codex":
+        events = enrich_codex_session(args.session_id)
+        if not events:
+            print(f"No events extracted from session: {args.session_id}")
+            sys.exit(1)
+
+        reasoning = sum(1 for e in events if e.event_type == "reasoning")
+        tool_calls = sum(1 for e in events if e.event_type == "tool_call")
+        rooted = sum(1 for e in events if e.parent_event_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Events:    {len(events)}")
+        print(f"  Reasoning: {reasoning}")
+        print(f"  Tool calls: {tool_calls}")
+        print(f"  Rooted:    {rooted}")
+        print(f"  ⚠ Proxy-based sessions may loop tool calls (DeepSeek quirk).")
+
+        if args.output:
+            print()
+            TimelineRenderer.print_timeline(events)
+
+        if args.save:
+            for ev in events:
+                store.append(args.session_id, ev)
+            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
 
     elif args.command == "validate":
         sid = _resolve_sid(args.session_id)

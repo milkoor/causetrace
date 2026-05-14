@@ -50,7 +50,7 @@ def main() -> None:
             return
 
         duration = (time.time() - pre_data["start_time"]) * 1000
-        parent_id = pre_data.get("parent_event_id")
+        parent_id = pre_data.get("parent_event_id") or None
         tool_result = hook_input.get("tool_result", {})
 
         recorder = TraceRecorder(session_id=session_id)
