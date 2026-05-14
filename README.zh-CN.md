@@ -1,19 +1,19 @@
 # causetrace
 
-> [中文](README.zh-CN.md)
+> [English](README.md)
 
-**causetrace** captures tool calls from AI agents (Claude Code, OpenCode) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and anomaly detection.
+**causetrace** 捕获 AI 智能体（Claude Code、OpenCode）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和异常检测。
 
-> **Data sources**: Claude Code (hooks), OpenCode (log tailing)  
-> **Storage**: `~/.causetrace/data/<session_id>.jsonl` — append-only JSONL, zero external dependencies
+> **数据源**: Claude Code（hooks）、OpenCode（日志监听）  
+> **存储**: `~/.causetrace/data/<session_id>.jsonl` — 追加写入 JSONL，零外部依赖
 
 ---
 
-## Showcase
+## 功能展示
 
-The same session viewed four ways — flat vs. causal.
+同一会话的四种视图 —— 扁平 vs. 因果。
 
-### Timeline (flat)
+### 时间线（扁平）
 
 ```
 $ causetrace timeline ses_10d2f16e
@@ -28,9 +28,9 @@ $ causetrace timeline ses_10d2f16e
 [03:13:38] Bash(command=python -m pytest tests/)
 ```
 
-Chronological order, but no insight into *why* each event happened.
+按时间排序，但看不出"为什么"发生。
 
-### Causal Tree
+### 因果树
 
 ```
 $ causetrace tree ses_10d2f16e
@@ -45,9 +45,9 @@ $ causetrace tree ses_10d2f16e
       └─ [03:13:38] Bash(command=python -m pytest tests/)
 ```
 
-Parent→child chains reveal the causal structure: each tool call is a direct response to its parent.
+父子链揭示了因果结构：每个工具调用都是对其父节点的直接响应。
 
-### Why (causal chain trace)
+### 因果链追踪
 
 ```
 $ causetrace why ses_10d2f16e <event_id>
@@ -56,9 +56,9 @@ $ causetrace why ses_10d2f16e <event_id>
 [03:13:38] Bash(command=python -m pytest tests/) ◀── TARGET
 ```
 
-Trace *why a specific event happened* — follow the causal chain backward from any event to its root.
+追溯**某个事件为何发生** —— 从任意事件回溯因果链直至根因。
 
-### Multi-parent DAG
+### 多父节点 DAG
 
 ```
 $ causetrace graph ses_3e23bcc8
@@ -73,25 +73,25 @@ $ causetrace graph ses_3e23bcc8
 [02:42:42] Edit(file_path=docs/api.md)  ← Grep(pattern=counter)
 ```
 
-Fan-in DAGs visualize convergent causation — one tool consuming multiple prior results. Support for multi-parent causal links via comma-separated `parent_event_id`.
+扇入 DAG 展示汇聚因果关系 —— 一个工具消费了多个前置结果。通过逗号分隔的 `parent_event_id` 支持多父节点因果链接。
 
 ---
 
-## Quick Start
+## 快速开始
 
 ```bash
 pip install causetrace
 
-# Run a demo with sample data
+# 运行示例数据演示
 causetrace timeline ses_10d2f16e
 causetrace tree    ses_10d2f16e
 causetrace replay  ses_10d2f16e --summary
 causetrace why     ses_10d2f16e <event_id>
 ```
 
-### Hook up Claude Code
+### 接入 Claude Code
 
-Add to `~/.claude/settings.json` to start recording every Claude Code session automatically.
+添加到 `~/.claude/settings.json` 即可自动记录每个 Claude Code 会话。
 
 ```json
 {
@@ -110,51 +110,51 @@ Add to `~/.claude/settings.json` to start recording every Claude Code session au
 }
 ```
 
-### Scan OpenCode logs
+### 扫描 OpenCode 日志
 
 ```bash
 causetrace opencode --save
 ```
 
-Parses OpenCode log files, infers causal relations from temporal proximity, and saves as a causetrace session.
+解析 OpenCode 日志文件，从时间邻近性推断因果关系，并保存为 causetrace 会话。
 
 ---
 
-## Data Model
+## 数据模型
 
-Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `session_id`, `event_type`, `caused_by`) distinguish causetrace from flat logging systems.
+每个事件是一个 `ToolEvent`。四个因果字段（`parent_event_id`, `session_id`, `event_type`, `caused_by`）使 causetrace 区别于扁平日志系统。
 
-| Field | Description |
-|-------|-------------|
+| 字段 | 说明 |
+|------|------|
 | `event_id` | UUID |
-| `parent_event_id` | Causal parent (comma-separated for fan-in) |
-| `session_id` | Owning session |
-| `tool_name` | e.g. `Bash`, `Read`, `Write` |
-| `tool_input` | Serialized input arguments |
-| `tool_output` | Serialized output |
-| `timestamp` | ISO 8601 |
-| `duration_ms` | Execution time |
+| `parent_event_id` | 因果父节点（逗号分隔支持扇入） |
+| `session_id` | 所属会话 |
+| `tool_name` | 例如 `Bash`、`Read`、`Write` |
+| `tool_input` | 序列化的输入参数 |
+| `tool_output` | 序列化的输出结果 |
+| `timestamp` | ISO 8601 时间戳 |
+| `duration_ms` | 执行耗时（毫秒） |
 | `event_type` | `tool_call` / `reasoning` / `context_update` / `user_input` |
-| `caused_by` | `user` / `reasoning` / event_id / semantic tag |
+| `caused_by` | `user` / `reasoning` / event_id / 语义标签 |
 
 ---
 
-## CLI Reference
+## 命令参考
 
-| Command | Description |
-|---------|-------------|
-| `causetrace timeline <id>` | Flat chronological view |
-| `causetrace tree <id>` | Causal parent→child tree |
-| `causetrace graph <id>` | Multi-parent DAG (fan-in) |
-| `causetrace sessions` | List recorded sessions |
-| `causetrace export <id>` | Export as JSON |
-| `causetrace replay <id>` | Replay with provenance |
-| `causetrace why <id> <eid>` | Trace causal chain from event |
-| `causetrace opencode [--save]` | Scan OpenCode logs |
+| 命令 | 说明 |
+|------|------|
+| `causetrace timeline <id>` | 扁平时间线 |
+| `causetrace tree <id>` | 因果树 |
+| `causetrace graph <id>` | 多父节点 DAG（扇入） |
+| `causetrace sessions` | 列出所有会话 |
+| `causetrace export <id>` | 导出 JSON |
+| `causetrace replay <id>` | 回放溯源 |
+| `causetrace why <id> <eid>` | 回溯因果链 |
+| `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
 
 ---
 
-## Architecture
+## 架构
 
 ```
 ┌──────────────┐    ┌──────────────┐
@@ -165,13 +165,13 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
        ▼                   ▼
 ┌──────────────────────────────────┐
 │         TraceRecorder            │
-│  (causal linking, storage)       │
+│  (因果链接、存储)                │
 └────────────────┬─────────────────┘
                  │
                  ▼
 ┌──────────────────────────────────┐
 │         JSONStore                │
-│  (append-only JSONL, no DB)      │
+│  (追加写入 JSONL, 无数据库)      │
 └──────────────────────────────────┘
                  │
                  ▼
@@ -181,16 +181,16 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 └──────────────────────────────────┘
 ```
 
-| Module | Responsibility |
-|--------|---------------|
-| `causetrace/core.py` | Data model, `TraceRecorder`, `JSONStore`, tree/DAG builders, renderers, `ReplayEngine` |
-| `causetrace/causality.py` | Temporal causal inference for unstructured logs |
-| `causetrace/cli.py` | argparse CLI dispatching to 8 subcommands |
-| `causetrace/hooks/` | Claude Code hook bridge + OpenCode log tailer |
+| 模块 | 职责 |
+|------|------|
+| `causetrace/core.py` | 数据模型、`TraceRecorder`、`JSONStore`、树/DAG 构建、渲染器、`ReplayEngine` |
+| `causetrace/causality.py` | 非结构化日志的时间因果推断 |
+| `causetrace/cli.py` | argparse CLI，8 个子命令 |
+| `causetrace/hooks/` | Claude Code hook 桥接 + OpenCode 日志监听 |
 
 ---
 
-## Development
+## 开发
 
 ```bash
 git clone https://github.com/milkoor/causetrace.git
@@ -201,6 +201,6 @@ python -m pytest tests/ -v
 
 ---
 
-## License
+## 许可
 
 MIT
