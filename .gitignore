@@ -1,14 +1,27 @@
+# Python
 __pycache__/
-*.egg-info/
 *.pyc
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
+
+# causetrace runtime data
 *.jsonl
 *.pre
 .causetrace/
-agenttrace
+
+# Development / review artifacts
+.sisyphus/
 CODE_REVIEW.md
 COMPETITIVE_ANALYSIS.md
 REVIEW_REPORT.md
-.sisyphus/
+
+# Symlinks to external projects
+agenttrace
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
