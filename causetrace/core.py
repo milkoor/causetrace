@@ -10,9 +10,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+SCHEMA_VERSION = "0.1"
+
+
 __all__ = [
     "ToolEvent", "TraceRecorder", "JSONStore",
     "TimelineRenderer", "ReplayEngine", "build_tree",
+    "validate_session", "SCHEMA_VERSION",
 ]
 
 
@@ -52,6 +56,7 @@ class ToolEvent:
 
     def to_dict(self) -> dict:
         d: dict = {
+            "schema_version": SCHEMA_VERSION,
             "event_id": self.event_id,
             "tool_name": self.tool_name,
             "tool_input": _safe_serialize(self.tool_input),
@@ -203,6 +208,93 @@ class JSONStore:
 
     def list_sessions(self) -> List[str]:
         return sorted(set(p.stem for p in self.store_dir.glob("*.jsonl")))
+
+
+def validate_session(events: List[ToolEvent], raw_lines: Optional[List[str]] = None) -> dict:
+    """Validate session integrity.
+
+    Returns a dict with keys:
+      valid (bool), errors (list), warnings (list),
+      event_count, broken_refs, cycles, orphan_count, malformed_lines
+    """
+    result = {
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+        "event_count": len(events),
+        "broken_refs": [],
+        "orphan_count": 0,
+        "cycles": [],
+        "malformed_lines": 0,
+    }
+
+    if raw_lines:
+        for i, line in enumerate(raw_lines):
+            if line.strip():
+                try:
+                    json.loads(line)
+                except json.JSONDecodeError:
+                    result["malformed_lines"] += 1
+                    result["errors"].append(f"Line {i+1}: malformed JSON")
+
+    by_id = {e.event_id: e for e in events}
+
+    # Check each event's parent refs exist
+    for ev in events:
+        parents = _parse_parents(ev)
+        for pid in parents:
+            if pid not in by_id and not pid.startswith("root_"):
+                result["broken_refs"].append(
+                    f"{ev.event_id}: parent_event_id '{pid}' not found"
+                )
+
+    if result["broken_refs"]:
+        result["warnings"].extend(result["broken_refs"])
+
+    # Orphan count: nodes with no local parent and no root_ prefix
+    orphans = 0
+    for ev in events:
+        parents = _parse_parents(ev)
+        if not parents:
+            continue
+        has_local_parent = any(pid in by_id for pid in parents)
+        if not has_local_parent:
+            orphans += 1
+    result["orphan_count"] = orphans
+
+    # Cycle detection: walk each parent chain, detect loops
+    visited_global: set = set()
+    for ev in events:
+        if ev.event_id in visited_global:
+            continue
+        chain: set = set()
+        current = ev
+        while current:
+            if current.event_id in chain:
+                result["cycles"].append(f"Cycle detected involving {current.event_id}")
+                result["errors"].append(f"Cycle in parent chain near {current.event_id}")
+                break
+            chain.add(current.event_id)
+            visited_global.add(current.event_id)
+            parents = _parse_parents(current)
+            if not parents:
+                break
+            # Follow first parent for cycle detection
+            current = by_id.get(parents[0])
+            if current is None:
+                break
+
+    # Timestamp check
+    for ev in events:
+        try:
+            datetime.fromisoformat(ev.timestamp)
+        except (ValueError, TypeError):
+            result["warnings"].append(f"{ev.event_id}: invalid timestamp '{ev.timestamp}'")
+
+    if result["errors"]:
+        result["valid"] = False
+
+    return result
 
 
 class TraceRecorder:

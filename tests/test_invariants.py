@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from causetrace.core import (
     JSONStore, ReplayEngine, TimelineRenderer, ToolEvent, TraceRecorder, build_tree,
+    validate_session, SCHEMA_VERSION,
 )
 
 
@@ -212,3 +213,56 @@ def test_replay_parent_links_referenced():
         if ev.parent_event_id:
             parent = next(e for e in events if e.event_id == ev.parent_event_id)
             assert parent.tool_name in trace_output
+
+
+def test_serialization_schema_version():
+    """to_dict always includes schema_version; roundtrip preserves it."""
+    event = ToolEvent(tool_name="Bash", tool_input={"cmd": "ls"})
+    d = event.to_dict()
+    assert d.get("schema_version") == SCHEMA_VERSION
+    restored = ToolEvent.from_dict(d)
+    assert restored.tool_name == "Bash"
+
+
+def test_validate_clean_session():
+    events = make_chain(4)
+    result = validate_session(events)
+    assert result["valid"] is True
+    assert result["broken_refs"] == []
+    assert result["cycles"] == []
+
+
+def test_validate_broken_refs():
+    events = [
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="a", parent_event_id="nonexistent"),
+    ]
+    result = validate_session(events)
+    assert result["valid"] is True  # broken refs = warning, not error
+    assert len(result["broken_refs"]) == 1
+    assert "nonexistent" in result["broken_refs"][0]
+
+
+def test_validate_cycle():
+    events = [
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="a", parent_event_id="b"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="b", parent_event_id="a"),
+    ]
+    result = validate_session(events)
+    assert result["valid"] is False
+    assert len(result["cycles"]) >= 1
+
+
+def test_validate_malformed_jsonl():
+    result = validate_session([], raw_lines=['{"valid": true}', "not json", '{"valid": false}'])
+    assert result["malformed_lines"] == 1
+    assert result["valid"] is False
+
+
+def test_validate_orphans():
+    """Nodes refs with no local parent are counted as orphans."""
+    events = [
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="a", parent_event_id="foreign"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="b"),
+    ]
+    result = validate_session(events)
+    assert result["orphan_count"] >= 1

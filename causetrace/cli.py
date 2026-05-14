@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime
 
-from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain
+from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain, validate_session
 from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
@@ -60,6 +60,10 @@ def cli(argv: list[str] | None = None) -> None:
     p_why.add_argument("session_id", help="Session ID")
     p_why.add_argument("event_id", help="Event ID to trace from")
     p_why.add_argument("--depth", type=int, default=20, help="Max chain depth (default: 20)")
+
+    p_val = sub.add_parser("validate", help="Validate session integrity")
+    p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_val.add_argument("--fix", action="store_true", help="Fix orphan parent refs (experimental)")
 
     args = parser.parse_args(argv)
     store = JSONStore()
@@ -165,6 +169,40 @@ def cli(argv: list[str] | None = None) -> None:
         target = by_id.get(args.event_id)
         print(f"Causal chain for {target.tool_name}({args.event_id[:8]}) in {sid}\n")
         print(TimelineRenderer.render_chain(chain))
+
+    elif args.command == "validate":
+        sid = _resolve_sid(args.session_id)
+        if not sid:
+            print("No sessions found.")
+            sys.exit(1)
+        path = store._path(sid)
+        if not path.exists():
+            print(f"Session file not found: {path}")
+            sys.exit(1)
+        raw = path.read_text().splitlines()
+        events = store.load(sid)
+        result = validate_session(events, raw_lines=raw)
+
+        status = "✓" if result["valid"] else "✗"
+        print(f"Session: {sid}  ({result['event_count']} events, {len(raw)} raw lines)\n")
+
+        print(f"  {status} Valid: {result['valid']}")
+        print(f"  Events:     {result['event_count']}")
+        print(f"  Malformed:  {result['malformed_lines']}")
+        print(f"  Orphans:    {result['orphan_count']}")
+        print(f"  Broken refs: {len(result['broken_refs'])}")
+        print(f"  Cycles:     {len(result['cycles'])}")
+
+        if result["warnings"]:
+            print(f"\n  Warnings ({len(result['warnings'])}):")
+            for w in result["warnings"][:10]:
+                print(f"    ⚠ {w}")
+        if result["errors"]:
+            print(f"\n  Errors ({len(result['errors'])}):")
+            for e in result["errors"][:10]:
+                print(f"    ✗ {e}")
+        if result["valid"]:
+            print("\n  ✓ All checks passed.")
 
 
 def _session_duration(events) -> str:
