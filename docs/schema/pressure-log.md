@@ -63,3 +63,51 @@ A `causality_complete` flag or heuristic: if a session has >N events and zero
 parent_event_id chains, it's likely broken rather than genuinely flat.
 Alternatively, the hooks could emit a session-level metadata event that
 declares the expected linking strategy.
+
+---
+
+## Pressure #002
+
+**Date**: 2026-05-14
+**Agent**: Claude Code (hooks)
+**Session**: 270e9651-6b70-499e-84c8-9beb36d6fa75 (241 events → 240 validated, of which 57 post-fix)
+
+### Problem
+
+After fixing the hook causality bug (Pressure #001), events now form a single
+56-event linear chain. Every tool call is causally linked to the previous one
+because the hook bridge's PreToolUse always reads `_last_event_id` and sets it
+as the parent. This produces tool-level causality ("this tool was invoked after
+that tool"), not semantic causality ("this tool was invoked because the user
+asked a new question").
+
+Example: reading five files during a code review forms `Read(A) → Read(B) →
+Read(C) → Read(D) → Read(E)` — but the real structure is that all five reads
+are peers under a single user intent ("review the codebase"), not a sequential
+chain where each read depends on the previous.
+
+### What the schema got right
+
+- parent_event_id is technically correct at the tool level
+- tree / graph / why all produce consistent output
+- fan-out (one event with multiple children) IS detected correctly when it occurs
+
+### What the schema couldn't express
+
+There is no way to signal "this event starts a new semantic turn." The hook
+bridge has no access to user intent boundaries — it only sees individual tool
+events. Without a `turn_id` or `user_message_id` in the Claude Code hook event
+payload, the bridge can't distinguish "same reasoning turn" from "new user
+request."
+
+### What would help
+
+The schema itself is sufficient. The gap is in the **hook input signal**: if
+Claude Code's hook events included a turn identifier or user-message boundary,
+the hook bridge could call `new_group()` at the right moments, producing
+multiple independent causal trees that match semantic structure.
+
+### Action
+
+No schema change needed. This is a runtime signal gap. Revisit when Claude Code
+exposes turn boundaries in hook events.
