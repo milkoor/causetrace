@@ -2,9 +2,9 @@
 
 > [English](README.md)
 
-**causetrace** 捕获 AI 智能体（Claude Code、OpenCode）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和异常检测。
+**causetrace** 捕获 AI 智能体（Claude Code、OpenCode、Aider、Continue.dev、Codex CLI、GitHub Copilot）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和异常检测。
 
-> **数据源**: Claude Code（hooks）、OpenCode（日志监听）  
+> **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / Codex CLI / GitHub Copilot（日志监听）、Aider（进程包装）  
 > **存储**: `~/.causetrace/data/<session_id>.jsonl` — 追加写入 JSONL，零外部依赖
 
 ---
@@ -74,6 +74,40 @@ $ causetrace graph ses_3e23bcc8
 ```
 
 扇入 DAG 展示汇聚因果关系 —— 一个工具消费了多个前置结果。通过逗号分隔的 `parent_event_id` 支持多父节点因果链接。
+
+---
+
+## 支持的 Agent
+
+| Agent | 接入方式 | 原理 |
+|-------|---------|------|
+| **Claude Code** | Hook 桥接 | 通过 `~/.claude/settings.json` 的 PreToolUse/PostToolUse hooks |
+| **OpenCode** | 日志监听 | 解析 `~/.local/share/opencode/log/*.log` 中的 tool.registry 条目 |
+| **Aider** | 进程包装 | 以子进程运行 `aider`，从 stdout 解析工具调用 |
+| **Continue.dev** | 日志监听 | 解析 `~/.continue/logs/core.log` 中的 JSON 工具调用条目 |
+| **Codex CLI** | 日志监听 | 解析 `~/.codex/sessions/.../rollout-*.jsonl` 中的 action/observation |
+| **GitHub Copilot** | 日志监听 | 解析 `~/.config/Code/logs/` 中 Copilot 扩展的 host 日志 |
+
+```bash
+# Claude Code — Hook 自动记录
+causetrace tale <session_id>
+
+# 基于日志的 Agent — 扫描并保存
+causetrace opencode --save
+causetrace continue --save
+causetrace codex --save
+causetrace copilot --save
+
+# Aider — 带追踪运行
+causetrace aider -- --model gpt-4 --yes "修复这个bug"
+```
+
+使用说明：
+
+- **Claude Code** — 精度最高，通过 Pre/Post hooks 捕获完整因果关系
+- **Aider** — `causetrace aider --save -- [aider 参数]` 包装 CLI；从输出尽力解析
+- **Continue.dev**、**Codex CLI**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
+- 所有基于日志的 Agent 采用启发式因果推断 —— 事件间的时间戳决定父子链
 
 ---
 
@@ -151,42 +185,52 @@ causetrace opencode --save
 | `causetrace replay <id>` | 回放溯源 |
 | `causetrace why <id> <eid>` | 回溯因果链 |
 | `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
+| `causetrace aider [--save] -- [args]` | 带追踪运行 Aider |
+| `causetrace continue [--save]` | 扫描 Continue.dev 日志 |
+| `causetrace codex [--save]` | 扫描 OpenAI Codex CLI 日志 |
+| `causetrace copilot [--save]` | 扫描 GitHub Copilot agent 日志 |
 
 ---
 
 ## 架构
 
 ```
-┌──────────────┐    ┌──────────────┐
-│ Claude Code  │    │   OpenCode   │
-│  (hooks)     │    │  (log tail)  │
-└──────┬───────┘    └──────┬───────┘
-       │                   │
-       ▼                   ▼
-┌──────────────────────────────────┐
-│         TraceRecorder            │
-│  (因果链接、存储)                │
-└────────────────┬─────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────┐
-│         JSONStore                │
-│  (追加写入 JSONL, 无数据库)      │
-└──────────────────────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────┐
-│   Tree / DAG Builders            │
-│   Renderers / ReplayEngine       │
-└──────────────────────────────────┘
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Claude Code  │  │   OpenCode   │  │    Aider     │  │ Continue.dev │  │  Codex CLI   │  │   Copilot    │
+│  (hooks)     │  │ (log tail)   │  │ (subprocess) │  │ (log tail)   │  │ (log tail)   │  │ (log tail)   │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       │                 │                 │                 │                 │                 │
+       ▼                 ▼                 ▼                 ▼                 ▼                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    TraceRecorder                                                    │
+│                              (因果链接、存储)                                                       │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                │
+                                                ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                           JSONStore                                                │
+│                               (追加写入 JSONL, 无数据库)                                           │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                │
+                                                ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              Tree / DAG Builders                                                    │
+│                              Renderers / ReplayEngine                                               │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | 模块 | 职责 |
 |------|------|
 | `causetrace/core.py` | 数据模型、`TraceRecorder`、`JSONStore`、树/DAG 构建、渲染器、`ReplayEngine` |
 | `causetrace/causality.py` | 非结构化日志的时间因果推断 |
-| `causetrace/cli.py` | argparse CLI，8 个子命令 |
-| `causetrace/hooks/` | Claude Code hook 桥接 + OpenCode 日志监听 |
+| `causetrace/cli.py` | argparse CLI，12 个子命令 |
+| `causetrace/hooks/` | 各 Agent 的桥接与监听器 |
+| `causetrace/hooks/claude_code.py` | Claude Code hook 桥接 |
+| `causetrace/hooks/opencode_tailer.py` | OpenCode 日志监听 |
+| `causetrace/hooks/aider_bridge.py` | Aider 子进程包装 |
+| `causetrace/hooks/continue_tailer.py` | Continue.dev 日志监听 |
+| `causetrace/hooks/codex_tailer.py` | Codex CLI 日志监听 |
+| `causetrace/hooks/copilot_tailer.py` | GitHub Copilot 日志监听 |
 
 ---
 

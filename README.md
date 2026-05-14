@@ -2,9 +2,9 @@
 
 > [中文](README.zh-CN.md)
 
-**causetrace** captures tool calls from AI agents (Claude Code, OpenCode) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and anomaly detection.
+**causetrace** captures tool calls from AI agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and anomaly detection.
 
-> **Data sources**: Claude Code (hooks), OpenCode (log tailing)  
+> **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / Codex CLI / GitHub Copilot (log tailing), Aider (process wrapper)  
 > **Storage**: `~/.causetrace/data/<session_id>.jsonl` — append-only JSONL, zero external dependencies
 
 ---
@@ -74,6 +74,39 @@ $ causetrace graph ses_3e23bcc8
 ```
 
 Fan-in DAGs visualize convergent causation — one tool consuming multiple prior results. Support for multi-parent causal links via comma-separated `parent_event_id`.
+
+---
+
+## Supported Agents
+
+| Agent | Method | How it works |
+|-------|--------|-------------|
+| **Claude Code** | Hook bridge | PreToolUse / PostToolUse hooks via `~/.claude/settings.json` |
+| **OpenCode** | Log tailing | Parses `~/.local/share/opencode/log/*.log` for tool.registry entries |
+| **Aider** | Process wrapper | Runs `aider` as subprocess, parses stdout for tool calls |
+| **Continue.dev** | Log tailing | Parses `~/.continue/logs/core.log` for JSON tool call entries |
+| **Codex CLI** | Log tailing | Parses `~/.codex/sessions/.../rollout-*.jsonl` for actions/observations |
+| **GitHub Copilot** | Log tailing | Parses `~/.config/Code/logs/` extension host logs for Copilot tool calls |
+
+```bash
+# Claude Code — automatic via hooks
+causetrace tale <session_id>
+
+# Log-based agents — scan and save
+causetrace opencode --save
+causetrace continue --save
+causetrace codex --save
+causetrace copilot --save
+
+# Aider — run with tracing
+causetrace aider -- --model gpt-4 --yes "fix the bug"
+```
+Usage notes:
+
+- **Claude Code** — most precise, captures full causality via Pre/Post hooks
+- **Aider** — `causetrace aider --save -- [aider args]` wraps the CLI; best-effort parsing from output
+- **Continue.dev**, **Codex CLI**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
+- All log-based agents infer causality heuristically — timestamps between events determine parent→child chains
 
 ---
 
@@ -151,42 +184,52 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace replay <id>` | Replay with provenance |
 | `causetrace why <id> <eid>` | Trace causal chain from event |
 | `causetrace opencode [--save]` | Scan OpenCode logs |
+| `causetrace aider [--save] -- [args]` | Run aider with tracing |
+| `causetrace continue [--save]` | Scan Continue.dev logs |
+| `causetrace codex [--save]` | Scan OpenAI Codex CLI logs |
+| `causetrace copilot [--save]` | Scan GitHub Copilot agent logs |
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────┐    ┌──────────────┐
-│ Claude Code  │    │   OpenCode   │
-│  (hooks)     │    │  (log tail)  │
-└──────┬───────┘    └──────┬───────┘
-       │                   │
-       ▼                   ▼
-┌──────────────────────────────────┐
-│         TraceRecorder            │
-│  (causal linking, storage)       │
-└────────────────┬─────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────┐
-│         JSONStore                │
-│  (append-only JSONL, no DB)      │
-└──────────────────────────────────┘
-                 │
-                 ▼
-┌──────────────────────────────────┐
-│   Tree / DAG Builders            │
-│   Renderers / ReplayEngine       │
-└──────────────────────────────────┘
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Claude Code  │  │   OpenCode   │  │    Aider     │  │ Continue.dev │  │  Codex CLI   │  │   Copilot    │
+│  (hooks)     │  │ (log tail)   │  │ (subprocess) │  │ (log tail)   │  │ (log tail)   │  │ (log tail)   │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       │                 │                 │                 │                 │                 │
+       ▼                 ▼                 ▼                 ▼                 ▼                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    TraceRecorder                                                    │
+│                             (causal linking, storage)                                               │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                │
+                                                ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                           JSONStore                                                │
+│                                (append-only JSONL, no DB)                                          │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                │
+                                                ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              Tree / DAG Builders                                                    │
+│                              Renderers / ReplayEngine                                               │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Module | Responsibility |
 |--------|---------------|
 | `causetrace/core.py` | Data model, `TraceRecorder`, `JSONStore`, tree/DAG builders, renderers, `ReplayEngine` |
 | `causetrace/causality.py` | Temporal causal inference for unstructured logs |
-| `causetrace/cli.py` | argparse CLI dispatching to 8 subcommands |
-| `causetrace/hooks/` | Claude Code hook bridge + OpenCode log tailer |
+| `causetrace/cli.py` | argparse CLI dispatching to 12 subcommands |
+| `causetrace/hooks/` | Agent-specific bridges and tailers |
+| `causetrace/hooks/claude_code.py` | Claude Code hook bridge |
+| `causetrace/hooks/opencode_tailer.py` | OpenCode log tailer |
+| `causetrace/hooks/aider_bridge.py` | Aider subprocess wrapper |
+| `causetrace/hooks/continue_tailer.py` | Continue.dev log tailer |
+| `causetrace/hooks/codex_tailer.py` | Codex CLI log tailer |
+| `causetrace/hooks/copilot_tailer.py` | GitHub Copilot log tailer |
 
 ---
 

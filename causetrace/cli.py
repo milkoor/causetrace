@@ -6,7 +6,10 @@ import sys
 from datetime import datetime
 
 from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain
-from .hooks.opencode_tailer import scan_logs
+from .hooks.opencode_tailer import scan_logs as scan_opencode
+from .hooks.continue_tailer import scan_logs as scan_continue
+from .hooks.codex_tailer import scan_logs as scan_codex
+from .hooks.copilot_tailer import scan_logs as scan_copilot
 
 
 def cli(argv: list[str] | None = None) -> None:
@@ -36,6 +39,22 @@ def cli(argv: list[str] | None = None) -> None:
     p_oc = sub.add_parser("opencode", help="Scan OpenCode logs and show tool calls")
     p_oc.add_argument("--save", action="store_true", help="Save as a new causetrace session")
     p_oc.add_argument("--files", type=int, default=3, help="Number of log files to scan (default: 3)")
+
+    p_ai = sub.add_parser("aider", help="Run aider with causetrace tracing")
+    p_ai.add_argument("aider_args", nargs="*", help="Arguments passed to aider")
+    p_ai.add_argument("--save", action="store_true", help="Save session after completion")
+
+    p_co = sub.add_parser("continue", help="Scan Continue.dev logs")
+    p_co.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+
+    p_cx = sub.add_parser("codex", help="Scan OpenAI Codex CLI logs")
+    p_cx.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cx.add_argument("--sessions", type=int, default=3, help="Number of session dirs to scan (default: 3)")
+
+    p_cp = sub.add_parser("copilot", help="Scan GitHub Copilot agent logs")
+    p_cp.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cp.add_argument("--max-dirs", type=int, default=3, help="Number of log dirs to scan (default: 3)")
+
 
     p_why = sub.add_parser("why", help="Trace causal chain backward from an event")
     p_why.add_argument("session_id", help="Session ID")
@@ -94,7 +113,7 @@ def cli(argv: list[str] | None = None) -> None:
         TimelineRenderer.print_graph(events)
 
     elif args.command == "opencode":
-        events = scan_logs(max_files=args.files)
+        events = scan_opencode(max_files=args.files)
         if not events:
             print("No tool calls found in OpenCode logs.")
             return
@@ -105,6 +124,18 @@ def cli(argv: list[str] | None = None) -> None:
             for ev in events:
                 store.append("opencode_latest", ev)
             print(f"\nSaved as session: opencode_latest ({len(events)} events)")
+
+    elif args.command == "aider":
+        _handle_aider(store, args)
+
+    elif args.command == "continue":
+        _handle_continue(store, args)
+
+    elif args.command == "codex":
+        _handle_codex(store, args)
+
+    elif args.command == "copilot":
+        _handle_copilot(store, args)
 
     elif args.command == "export":
         _, events = _load(args.session_id)
@@ -149,6 +180,65 @@ def _session_duration(events) -> str:
         return f"{s // 60}m{s % 60}s"
     except Exception:
         return ""
+
+
+def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
+    """Handle `causetrace aider`."""
+    from .hooks.aider_bridge import run_with_tracing
+
+    recorder = run_with_tracing(args.aider_args)
+    events = recorder.events
+    if not events:
+        print("[causetrace] No tool calls captured.")
+        return
+    print(f"\n[causetrace] Session: {recorder.session_id} ({len(events)} events)")
+    TimelineRenderer.print_timeline(events)
+    if args.save:
+        for ev in events:
+            store.append(recorder.session_id, ev)
+        print(f"\nSaved as session: {recorder.session_id} ({len(events)} events)")
+
+
+def _handle_continue(store: JSONStore, args: argparse.Namespace) -> None:
+    """Handle `causetrace continue`."""
+    events = scan_continue()
+    if not events:
+        print("No tool calls found in Continue.dev logs.")
+        return
+    print(f"Continue.dev tool calls ({len(events)} events)\n")
+    TimelineRenderer.print_timeline(events)
+    if args.save:
+        for ev in events:
+            store.append("continue_latest", ev)
+        print(f"\nSaved as session: continue_latest ({len(events)} events)")
+
+
+def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
+    """Handle `causetrace codex`."""
+    events = scan_codex(max_sessions=args.sessions)
+    if not events:
+        print("No tool calls found in Codex CLI logs.")
+        return
+    print(f"Codex CLI tool calls ({len(events)} events, {args.sessions} sessions)\n")
+    TimelineRenderer.print_timeline(events)
+    if args.save:
+        for ev in events:
+            store.append("codex_latest", ev)
+        print(f"\nSaved as session: codex_latest ({len(events)} events)")
+
+
+def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
+    """Handle `causetrace copilot`."""
+    events = scan_copilot(max_log_dirs=args.max_dirs)
+    if not events:
+        print("No tool calls found in Copilot logs.")
+        return
+    print(f"Copilot tool calls ({len(events)} events, {args.max_dirs} log dirs)\n")
+    TimelineRenderer.print_timeline(events)
+    if args.save:
+        for ev in events:
+            store.append("copilot_latest", ev)
+        print(f"\nSaved as session: copilot_latest ({len(events)} events)")
 
 
 if __name__ == "__main__":
