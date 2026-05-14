@@ -208,6 +208,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace continue [--save]` | Scan Continue.dev logs |
 | `causetrace codex [--save]` | Scan OpenAI Codex CLI logs |
 | `causetrace copilot [--save]` | Scan GitHub Copilot agent logs |
+| `causetrace doctor` | Diagnose agent configuration and data sources |
 
 ---
 

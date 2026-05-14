@@ -43,13 +43,14 @@ causetrace aider [--save] -- [args]       # Run aider with tracing
 causetrace continue [--save]              # Scan Continue.dev logs
 causetrace codex [--save]                 # Scan OpenAI Codex CLI logs
 causetrace copilot [--save]               # Scan GitHub Copilot agent logs
+causetrace doctor                         # Diagnose agent configuration and data sources
 ```
 
 ## Architecture
 
 - **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), append-only JSONL storage (`JSONStore`), tree/DAG builders, renderers, `ReplayEngine`.
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
-- **`causetrace/cli.py`** — argparse-based CLI dispatching to 18 subcommands.
+- **`causetrace/cli.py`** — argparse-based CLI dispatching to 19 subcommands.
 - **`causetrace/hooks/`** — Agent-specific bridges and tailers:
   - `claude_code.py` — Claude Code PreToolUse/PostToolUse hook bridge
   - `claude_project_parser.py` — Claude Code project session parser (enrich)

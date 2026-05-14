@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain, validate_session
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
@@ -13,6 +14,113 @@ from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
+
+try:
+    from importlib.metadata import version as _import_version
+    _CAUSETRACE_VERSION = _import_version("causetrace")
+except Exception:
+    try:
+        from importlib.metadata import version as _import_version
+        _CAUSETRACE_VERSION = _import_version("causetrace")
+    except Exception:
+        _CAUSETRACE_VERSION = "0.1.2"
+
+
+def _check_result(label: str, ok: bool, detail: str = "") -> tuple[bool, str, str]:
+    return (ok, label, detail)
+
+
+def _run_doctor() -> list[tuple[bool, str, str]]:
+    """Run all diagnostic checks and return list of (ok, label, detail)."""
+    results: list[tuple[bool, str, str]] = []
+
+    # ── Self check ──
+    try:
+        import causetrace
+        version = getattr(causetrace, "__version__", _CAUSETRACE_VERSION)
+        results.append(_check_result("causetrace", True, f"v{version} — {sys.executable}"))
+    except Exception as e:
+        results.append(_check_result("causetrace", False, str(e)))
+
+    # ── Claude Code hooks ──
+    claude_settings = Path.home() / ".claude" / "settings.json"
+    if claude_settings.exists():
+        try:
+            data = json.loads(claude_settings.read_text())
+            hooks = data.get("hooks", {})
+            pre = hooks.get("PreToolUse", [])
+            post = hooks.get("PostToolUse", [])
+            if pre and post:
+                results.append(_check_result("Claude Code hooks", True,
+                    f"{len(pre)} PreToolUse, {len(post)} PostToolUse hooks"))
+            else:
+                results.append(_check_result("Claude Code hooks", False,
+                    "settings.json exists but no PreToolUse/PostToolUse hooks"))
+        except Exception as e:
+            results.append(_check_result("Claude Code hooks", False, f"parse error: {e}"))
+    else:
+        results.append(_check_result("Claude Code hooks", False, "settings.json not found"))
+
+    # Claude Code project sessions
+    claude_projects = Path.home() / ".claude" / "projects"
+    if claude_projects.exists():
+        sessions = list(claude_projects.rglob("*.jsonl"))
+        results.append(_check_result("Claude Code sessions", True,
+            f"{len(sessions)} session files in {claude_projects}"))
+    else:
+        results.append(_check_result("Claude Code sessions", False,
+            f"{claude_projects} not found"))
+
+    # ── Codex CLI ──
+    codex_sessions = Path.home() / ".codex" / "sessions"
+    if codex_sessions.exists():
+        rollouts = list(codex_sessions.rglob("rollout*.jsonl"))
+        results.append(_check_result("Codex CLI", True,
+            f"{len(rollouts)} rollout files in {codex_sessions}"))
+    else:
+        results.append(_check_result("Codex CLI", False,
+            f"{codex_sessions} not found"))
+
+    # ── OpenCode ──
+    opencode_db = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+    if opencode_db.exists():
+        size = opencode_db.stat().st_size
+        results.append(_check_result("OpenCode DB", True,
+            f"{opencode_db} ({size // 1024} KB)"))
+    else:
+        opencode_logs = Path.home() / ".local" / "share" / "opencode" / "logs"
+        if opencode_logs.exists():
+            results.append(_check_result("OpenCode DB", False,
+                f"DB not found at {opencode_db}, but logs dir exists"))
+        else:
+            results.append(_check_result("OpenCode", False, "not found"))
+
+    # ── Continue.dev ──
+    continue_log = Path.home() / ".continue" / "logs" / "core.log"
+    if continue_log.exists():
+        size = continue_log.stat().st_size
+        results.append(_check_result("Continue.dev", True,
+            f"{continue_log} ({size // 1024} KB)"))
+    else:
+        real_continue_log = Path.home() / ".continue" / "core.log"
+        if real_continue_log.exists():
+            size = real_continue_log.stat().st_size
+            results.append(_check_result("Continue.dev", True,
+                f"{real_continue_log} ({size // 1024} KB)"))
+        else:
+            results.append(_check_result("Continue.dev", False, "no log file found"))
+
+    # ── GitHub Copilot ──
+    code_logs = Path.home() / ".config" / "Code" / "logs"
+    if code_logs.exists():
+        copilot_logs = list(code_logs.rglob("*.log"))
+        results.append(_check_result("GitHub Copilot", True,
+            f"{len(copilot_logs)} log files in {code_logs}"))
+    else:
+        results.append(_check_result("GitHub Copilot", False,
+            f"{code_logs} not found"))
+
+    return results
 
 
 def cli(argv: list[str] | None = None) -> None:
@@ -88,6 +196,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_val = sub.add_parser("validate", help="Validate session integrity")
     p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
     p_val.add_argument("--fix", action="store_true", help="Fix orphan parent refs (experimental)")
+
+    sub.add_parser("doctor", help="Diagnose agent configuration and data sources")
 
     args = parser.parse_args(argv)
     store = JSONStore()
@@ -297,6 +407,16 @@ def cli(argv: list[str] | None = None) -> None:
             for ev in events:
                 store.append(args.session_id, ev)
             print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+
+    elif args.command == "doctor":
+        results = _run_doctor()
+        print("causetrace doctor — agent configuration & data source check\n")
+        for ok, label, detail in results:
+            icon = "✓" if ok else "✗"
+            print(f"  {icon} {label}")
+            if detail:
+                print(f"     {detail}")
+        print()
 
     elif args.command == "validate":
         sid = _resolve_sid(args.session_id)

@@ -209,6 +209,7 @@ causetrace opencode --save
 | `causetrace continue [--save]` | 扫描 Continue.dev 日志 |
 | `causetrace codex [--save]` | 扫描 OpenAI Codex CLI 日志 |
 | `causetrace copilot [--save]` | 扫描 GitHub Copilot agent 日志 |
+| `causetrace doctor` | 诊断 Agent 配置和数据源状态 |
 
 ---
 
