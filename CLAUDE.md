@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What causetrace does
 
-causetrace is an Agent Runtime Trace SDK — it captures tool calls from AI agents (Claude Code via hooks, OpenCode via log tailing) with **causal traceability**. Instead of flat timelines, events are linked into trees and DAGs via `parent_event_id` chains, enabling replay, causal chain analysis, and anomaly detection.
+causetrace is an Agent Runtime Observation primitive — it captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs via `parent_event_id` chains. Instead of flat timelines, every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
 
 ## Build & test
 
@@ -32,21 +32,41 @@ causetrace sessions                 # List recorded sessions
 causetrace export <session_id>      # Export as JSON
 causetrace replay [session_id]      # Replay trace with provenance
 causetrace why <session_id> <eid>   # Trace causal chain from event
-causetrace opencode --save          # Scan OpenCode logs
+causetrace opencode [--save]        # Scan OpenCode logs
+causetrace aider [--save] -- [args] # Run aider with tracing
+causetrace continue [--save]        # Scan Continue.dev logs
+causetrace codex [--save]           # Scan OpenAI Codex CLI logs
+causetrace copilot [--save]         # Scan GitHub Copilot agent logs
 ```
 
 ## Architecture
 
-- **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), JSON-per-session storage (`JSONStore`), tree/DAG builders (`build_tree`, `trace_causal_chain`), renderers (`TimelineRenderer` with flat/tree/graph views), and `ReplayEngine`.
-- **`causetrace/causality.py`** — Temporal causality inference for OpenCode logs (no structured input/output available): turn detection, sequential chaining, fan-in detection (multiple reads → one write), agent subtask hierarchy. Used by the OpenCode hook.
-- **`causetrace/hooks/claude_code.py`** — Claude Code hook bridge reads PreToolUse/PostToolUse events from stdin, tracks start times and causal parent IDs via files in `~/.causetrace/active/`. Designed to be used as a Claude Code hook script.
-- **`causetrace/hooks/opencode_tailer.py`** — Parses OpenCode log files for `tool.registry` log entries, infers causality with `infer_relations()`, and optionally enriches with model/provider info from OpenCode's SQLite DB.
-- **`causetrace/cli.py`** — argparse-based CLI dispatching to the 8 subcommands.
+- **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), append-only JSONL storage (`JSONStore`), tree/DAG builders, renderers, `ReplayEngine`.
+- **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
+- **`causetrace/cli.py`** — argparse-based CLI dispatching to 12 subcommands.
+- **`causetrace/hooks/`** — Agent-specific bridges and tailers:
+  - `claude_code.py` — Claude Code PreToolUse/PostToolUse hook bridge
+  - `opencode_tailer.py` — OpenCode tool.registry log parser
+  - `aider_bridge.py` — Aider subprocess wrapper (stdout parsing)
+  - `continue_tailer.py` — Continue.dev JSON log tailer
+  - `codex_tailer.py` — Codex CLI JSONL session log parser
+  - `copilot_tailer.py` — GitHub Copilot VS Code extension host log parser
 - **`tests/test_invariants.py`** — Tests runtime invariants (serialization roundtrip, causality acyclicity, append-only integrity, renderer stability), not business logic.
+
+## Runtime principles
+
+See `docs/runtime-principles.md` for the full set. Core tenets:
+
+1. **Causality over chronology** — the causal graph is the primary runtime abstraction
+2. **Fidelity over coverage** — higher-fidelity causality > supporting more runtimes
+3. **Runtime-native semantics** — schema evolves from real traces, not speculative design
+4. **Semantic restraint** — new event types require evidence across >=3 independent runtimes
+5. **Separate core from intelligence** — AI features must live outside the core (future `causetrace-intelligence/`)
 
 ## Key design choices
 
-- **Schema evolution** is tracked in `docs/schema/INDEX.md` (formal definitions in `docs/schema/SCHEMA.md`) — fields are added reactively to Runtime observations, not designed upfront.
+- **Schema evolution** is tracked reactively in `docs/schema/` (INDEX.md for evolution log, SCHEMA.md for field definitions, pressure-log.md for trace data that strains the current model).
 - **Multi-parent causality** uses comma-separated `parent_event_id` (e.g. `"root_a,root_b"` ) for fan-in DAGs. `_parse_parents()` splits on comma.
 - **Storage** is append-only JSONL files at `~/.causetrace/data/<session_id>.jsonl`. No DB dependency.
+- **Heuristic causality** (`infer_relations()` in `causality.py`) is an explicit fallback for log-based agents, clearly documented as lower fidelity.
 - **Data model**: `ToolEvent` has event_id, parent_event_id, session_id, event_type, caused_by, model, provider, agent, tool_name, tool_input, tool_output, timestamp, duration_ms.
