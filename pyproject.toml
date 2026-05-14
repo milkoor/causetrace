@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causetrace"
-version = "0.1.0"
+version = "0.1.1"
 description = "Causal traceability SDK for AI agent runtimes — observe, replay, understand agent behavior"
 readme = "README.md"
 license = {text = "MIT"}
