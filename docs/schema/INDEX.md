@@ -1,5 +1,7 @@
-# AgentTrace Schema Evolution Log
+# Causetrace Schema Evolution Log
 
+> See [SCHEMA.md](SCHEMA.md) for formal field definitions.
+>
 > Schema is not designed upfront — it emerges from real Runtime data.
 > This log records every field addition, change, or removal, along with the
 > Runtime behavior observation that triggered it.
@@ -45,6 +47,25 @@ Agent Runtime behavior is a DAG.
 - `context_before` / `context_after` — need real data to understand shape
 - `group_id` — need multi-turn session data first
 - `concurrency_id` — Claude Code runtime is serial for now
+
+---
+
+### 2026-05-14: Deferred — `caused_by` Concern
+
+**Trigger**: Architecture review identified that `caused_by: Optional[str]` mixes
+three distinct concepts: semantic labels (`"reasoning"`, `"user"`), structural
+references (`event_id`), and heuristic annotations. This will become a
+maintainability issue as causal queries grow more sophisticated.
+
+**Status**: Deferred to v0.3+. Not actionable now because:
+- `parent_event_id` already handles structural causality; `caused_by` is supplementary
+- No real multi-agent trace data exists yet to validate the right abstraction
+- Preemptive `causal_type` enums would likely be wrong without data
+
+**Future direction** (candidate split):
+- `parent_event_ids: List[str]` — formalize multi-parent as a list
+- `causal_type: "structural" | "semantic" | "user" | "heuristic"`
+- `semantic_intent: Optional[str]` — the human/semantic label
 
 ---
 

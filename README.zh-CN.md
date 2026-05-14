@@ -2,7 +2,7 @@
 
 > [English](README.md)
 
-**causetrace** 捕获 AI 智能体（Claude Code、OpenCode、Aider、Continue.dev、Codex CLI、GitHub Copilot）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和异常检测。
+**causetrace** 捕获 coding agents（Claude Code、OpenCode、Aider、Continue.dev、Codex CLI、GitHub Copilot）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和行为解释。
 
 > **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / Codex CLI / GitHub Copilot（日志监听）、Aider（进程包装）  
 > **存储**: `~/.causetrace/data/<session_id>.jsonl` — 追加写入 JSONL，零外部依赖

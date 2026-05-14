@@ -2,7 +2,7 @@
 
 > [中文](README.zh-CN.md)
 
-**causetrace** captures tool calls from AI agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and anomaly detection.
+**causetrace** captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
 
 > **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / Codex CLI / GitHub Copilot (log tailing), Aider (process wrapper)  
 > **Storage**: `~/.causetrace/data/<session_id>.jsonl` — append-only JSONL, zero external dependencies

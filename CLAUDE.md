@@ -46,7 +46,7 @@ causetrace opencode --save          # Scan OpenCode logs
 
 ## Key design choices
 
-- **Schema evolution** is tracked in `docs/schema-evolution/INDEX.md` — fields are added reactively to Runtime observations, not designed upfront.
+- **Schema evolution** is tracked in `docs/schema/INDEX.md` (formal definitions in `docs/schema/SCHEMA.md`) — fields are added reactively to Runtime observations, not designed upfront.
 - **Multi-parent causality** uses comma-separated `parent_event_id` (e.g. `"root_a,root_b"` ) for fan-in DAGs. `_parse_parents()` splits on comma.
 - **Storage** is append-only JSONL files at `~/.causetrace/data/<session_id>.jsonl`. No DB dependency.
 - **Data model**: `ToolEvent` has event_id, parent_event_id, session_id, event_type, caused_by, model, provider, agent, tool_name, tool_input, tool_output, timestamp, duration_ms.
