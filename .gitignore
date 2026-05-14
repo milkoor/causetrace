@@ -1,0 +1,14 @@
+__pycache__/
+*.egg-info/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.jsonl
+*.pre
+.causetrace/
+agenttrace
+CODE_REVIEW.md
+COMPETITIVE_ANALYSIS.md
+REVIEW_REPORT.md
+.sisyphus/

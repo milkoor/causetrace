@@ -1,0 +1,155 @@
+"""CLI entry point: timeline, tree, sessions, export, replay."""
+
+import argparse
+import json
+import sys
+from datetime import datetime
+
+from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain
+from .hooks.opencode_tailer import scan_logs
+
+
+def cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="causetrace", description="Agent Runtime Trace CLI")
+    sub = parser.add_subparsers(dest="command")
+
+    p_tl = sub.add_parser("timeline", help="Show flat chronological timeline")
+    p_tl.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_tl.add_argument("--output", "-o", action="store_true", help="Show tool output")
+
+    p_tr = sub.add_parser("tree", help="Show causal tree (parent→child)")
+    p_tr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+
+    p_gr = sub.add_parser("graph", help="Show multi-parent DAG (fan-in)")
+    p_gr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+
+    sub.add_parser("sessions", help="List all recorded sessions")
+
+    p_exp = sub.add_parser("export", help="Export session as JSON")
+    p_exp.add_argument("session_id", help="Session ID to export")
+    p_exp.add_argument("--pretty", "-p", action="store_true", help="Pretty-print JSON")
+
+    p_rep = sub.add_parser("replay", help="Show replay trace for a session")
+    p_rep.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_rep.add_argument("--summary", "-s", action="store_true", help="Show compact summary only")
+
+    p_oc = sub.add_parser("opencode", help="Scan OpenCode logs and show tool calls")
+    p_oc.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_oc.add_argument("--files", type=int, default=3, help="Number of log files to scan (default: 3)")
+
+    p_why = sub.add_parser("why", help="Trace causal chain backward from an event")
+    p_why.add_argument("session_id", help="Session ID")
+    p_why.add_argument("event_id", help="Event ID to trace from")
+    p_why.add_argument("--depth", type=int, default=20, help="Max chain depth (default: 20)")
+
+    args = parser.parse_args(argv)
+    store = JSONStore()
+
+    def _resolve_sid(sid: str | None) -> str | None:
+        if sid:
+            return sid
+        sessions = store.list_sessions()
+        return sessions[-1] if sessions else None
+
+    def _load(sid: str | None):
+        sid = _resolve_sid(sid)
+        if not sid:
+            print("No sessions found.")
+            sys.exit(1)
+        events = store.load(sid)
+        if not events:
+            print(f"No events for session: {sid}")
+            sys.exit(1)
+        return sid, events
+
+    if args.command is None:
+        args.command = "timeline"
+        args.session_id = None
+        args.output = False
+
+    if args.command == "sessions":
+        sessions = store.list_sessions()
+        if not sessions:
+            print("No sessions found.")
+            return
+        print(f"Sessions ({len(sessions)}):")
+        for sid in sessions:
+            evs = store.load(sid)
+            dur = _session_duration(evs)
+            print(f"  {sid}  ({len(evs)} events, {dur})")
+
+    elif args.command == "timeline":
+        sid, events = _load(args.session_id)
+        print(f"Session: {sid}  ({len(events)} events)\n")
+        TimelineRenderer.print_timeline(events, show_output=args.output)
+
+    elif args.command == "tree":
+        sid, events = _load(args.session_id)
+        print(f"Session: {sid}  ({len(events)} events, causal tree)\n")
+        TimelineRenderer.print_tree(events)
+
+    elif args.command == "graph":
+        sid, events = _load(args.session_id)
+        print(f"Session: {sid}  ({len(events)} events, multi-parent DAG)\n")
+        TimelineRenderer.print_graph(events)
+
+    elif args.command == "opencode":
+        events = scan_logs(max_files=args.files)
+        if not events:
+            print("No tool calls found in OpenCode logs.")
+            return
+        hdr = TimelineRenderer.session_header(events)
+        print(f"OpenCode tool calls ({len(events)} events, {args.files} log files){hdr}\n")
+        TimelineRenderer.print_timeline(events)
+        if args.save:
+            for ev in events:
+                store.append("opencode_latest", ev)
+            print(f"\nSaved as session: opencode_latest ({len(events)} events)")
+
+    elif args.command == "export":
+        _, events = _load(args.session_id)
+        data = [e.to_dict() for e in events]
+        kwargs = {"indent": 2} if args.pretty else {}
+        json.dump(data, sys.stdout, **kwargs)
+        print()
+
+    elif args.command == "replay":
+        sid, events = _load(args.session_id)
+        engine = ReplayEngine(events)
+        if args.summary:
+            print(f"Session {sid}")
+            print(f"  All:  {engine.summary()}")
+            print(f"  Detail: {engine.detailed_summary()}")
+        else:
+            print(f"Replay trace for {sid}\n")
+            engine.print_trace()
+
+    elif args.command == "why":
+        sid, events = _load(args.session_id)
+        chain = trace_causal_chain(events, args.event_id)
+        if not chain:
+            print(f"Event not found: {args.event_id}")
+            sys.exit(1)
+        by_id = {e.event_id: e for e in events}
+        target = by_id.get(args.event_id)
+        print(f"Causal chain for {target.tool_name}({args.event_id[:8]}) in {sid}\n")
+        print(TimelineRenderer.render_chain(chain))
+
+
+def _session_duration(events) -> str:
+    if len(events) < 2:
+        return ""
+    t0 = events[0].timestamp
+    t1 = events[-1].timestamp
+    try:
+        d = datetime.fromisoformat(t1) - datetime.fromisoformat(t0)
+        s = int(d.total_seconds())
+        if s < 60:
+            return f"{s}s"
+        return f"{s // 60}m{s % 60}s"
+    except Exception:
+        return ""
+
+
+if __name__ == "__main__":
+    cli()
