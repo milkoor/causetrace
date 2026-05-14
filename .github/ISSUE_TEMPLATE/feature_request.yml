@@ -1,0 +1,27 @@
+name: Feature Request
+description: Suggest a change or addition
+labels: [enhancement]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What gap or limitation are you trying to address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+      description: How would you like causetrace to behave?
+
+  - type: checkboxes
+    id: runtime-impact
+    attributes:
+      label: Runtime impact check
+      options:
+        - label: This change preserves or improves causal fidelity
+        - label: This change does not couple causetrace to a specific agent framework
+        - label: This change does not introduce a database dependency

@@ -1,6 +1,6 @@
 # causetrace
 
-> [中文](README.zh-CN.md)
+> [中文](README.zh-CN.md) • [CI](https://github.com/milkoor/causetrace/actions) • [PyPI](https://pypi.org/project/causetrace/)
 
 **causetrace** captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
 

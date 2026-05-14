@@ -1,0 +1,32 @@
+name: Bug Report
+description: Report something that isn't working as expected
+labels: [bug]
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened and what did you expect?
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: Agent
+      description: Which agent were you using? (Claude Code, OpenCode, Aider, etc.)
+      placeholder: e.g. Claude Code
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: Trace output
+      description: Paste the relevant causetrace output or error
+      render: text
+
+  - type: textarea
+    id: schema
+    attributes:
+      label: Schema pressure
+      description: Did this trace expose something the current schema can't express well? (optional, for pressure-log.md)
