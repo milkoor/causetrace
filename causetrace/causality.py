@@ -57,6 +57,9 @@ def infer_relations(events: List[ToolEvent]) -> List[ToolEvent]:
                 all_parents = [existing] + additional if existing else additional
                 child.parent_event_id = ",".join(all_parents)
 
+    # Phase 5: Break any cycles in the causal graph (safety net)
+    _break_cycles(events)
+
     return events
 
 
@@ -82,7 +85,11 @@ def _link_sequential(turn: List[ToolEvent], by_id: Dict[str, ToolEvent]) -> None
             prev_id = None
             continue
         if prev_id and not ev.parent_event_id:
-            ev.parent_event_id = prev_id
+            # 时间戳检查：确保父事件时间早于子事件
+            parent_ev = by_id.get(prev_id)
+            if parent_ev and parent_ev.timestamp and ev.timestamp:
+                if parent_ev.timestamp <= ev.timestamp:
+                    ev.parent_event_id = prev_id
         prev_id = ev.event_id
 
 
@@ -117,8 +124,10 @@ def _detect_fan_in(turn: List[ToolEvent], max_gap: int = 3) -> Dict[str, List[st
             if prev.tool_name in ("question", "invalid"):
                 break
             if prev.tool_name in _READ_TOOLS:
-                read_ids.append(prev.event_id)
-                seen_non_read = 0
+                # 时间戳检查：确保读事件早于写事件
+                if prev.timestamp and ev.timestamp and prev.timestamp <= ev.timestamp:
+                    read_ids.append(prev.event_id)
+                    seen_non_read = 0
             else:
                 seen_non_read += 1
                 if seen_non_read > max_gap:
@@ -167,3 +176,154 @@ def build_causal_graph(events: List[ToolEvent]) -> Dict[str, List[str]]:
         parents = parse_multi_parent(ev.parent_event_id)
         graph[ev.event_id] = parents
     return graph
+
+
+def _break_cycles(events: List[ToolEvent]) -> int:
+    """Detect and break cycles in the causal graph using DFS.
+
+    When a cycle is found, the back-edge is removed (parent_event_id cleared).
+    Returns the number of cycles broken.
+    """
+    # Build initial graph snapshot
+    graph: Dict[str, List[str]] = {}
+    for ev in events:
+        parents = parse_multi_parent(ev.parent_event_id)
+        graph[ev.event_id] = parents
+
+    cycles_broken = 0
+    for ev in events:
+        parent_ids = parse_multi_parent(ev.parent_event_id)
+        if not parent_ids:
+            continue
+
+        clean_parents: List[str] = []
+        for pid in parent_ids:
+            if _would_create_cycle(graph, ev.event_id, pid):
+                cycles_broken += 1
+            else:
+                clean_parents.append(pid)
+
+        if len(clean_parents) == len(parent_ids):
+            continue
+
+        if clean_parents:
+            ev.parent_event_id = ",".join(clean_parents)
+        else:
+            ev.parent_event_id = None
+        graph[ev.event_id] = clean_parents
+
+    return cycles_broken
+
+
+def _would_create_cycle(graph: Dict[str, List[str]], child_id: str, parent_id: str) -> bool:
+    """Check if setting parent_id as parent of child_id would create a cycle."""
+    visited = {child_id}
+    stack = [parent_id]
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            return True  # Cycle found
+        visited.add(current)
+        # Traverse parents of current
+        for p in graph.get(current, []):
+            if p not in visited:
+                stack.append(p)
+    return False
+
+
+def causal_quality_report(events: List[ToolEvent]) -> dict:
+    """Generate a quality report for the causal graph of a session.
+
+    Returns a dict with:
+      - total_events
+      - linked_events (events with parent_event_id)
+      - root_events (events without parent)
+      - multi_parent_events
+      - max_depth
+      - avg_chain_length
+      - cycles_broken
+      - score (0.0-1.0 quality score)
+    """
+    if not events:
+        return {
+            "total_events": 0,
+            "linked_events": 0,
+            "root_events": 0,
+            "multi_parent_events": 0,
+            "max_depth": 0,
+            "avg_chain_length": 0.0,
+            "cycles_broken": 0,
+            "score": 1.0,
+        }
+
+    total = len(events)
+    linked = sum(1 for ev in events if ev.parent_event_id)
+    roots = total - linked
+    multi = sum(1 for ev in events if ev.parent_event_id and "," in ev.parent_event_id)
+
+    # Calculate depths from each root
+    graph: Dict[str, List[str]] = {}
+    children: Dict[str, List[str]] = defaultdict(list)
+    for ev in events:
+        parents_str = ev.parent_event_id or ""
+        parents = parse_multi_parent(parents_str)
+        graph[ev.event_id] = parents
+        for p in parents:
+            children[p].append(ev.event_id)
+
+    def _depth(node_id: str, seen: set) -> int:
+        if node_id in seen:
+            return 0
+        seen.add(node_id)
+        max_child = 0
+        for c in children.get(node_id, []):
+            max_child = max(max_child, 1 + _depth(c, seen))
+        seen.discard(node_id)
+        return max_child
+
+    root_ids = [ev.event_id for ev in events if not ev.parent_event_id]
+    depths = [_depth(rid, set()) for rid in root_ids]
+    max_depth = max(depths) if depths else 0
+    avg_chain = sum(depths) / len(depths) if depths else 0.0
+
+    # Quality score: linked/root density + chain coherence
+    link_ratio = linked / total if total else 0
+    chain_score = min(1.0, max_depth / 20)  # deeper is better, cap at 20
+    score = max(0.0, min(1.0, link_ratio * 0.5 + chain_score * 0.5))
+
+    # Detect any remaining cycles (should be 0 after _break_cycles)
+    cycles_remaining = _count_cycles(graph)
+
+    return {
+        "total_events": total,
+        "linked_events": linked,
+        "root_events": roots,
+        "multi_parent_events": multi,
+        "max_depth": max_depth,
+        "avg_chain_length": round(avg_chain, 2),
+        "cycles_remaining": cycles_remaining,
+        "score": round(score, 3),
+    }
+
+
+def _count_cycles(graph: Dict[str, List[str]]) -> int:
+    """Count remaining cycles in causal graph using DFS."""
+    visited: set = set()
+    rec_stack: set = set()
+    cycles = 0
+
+    def _dfs(node: str) -> None:
+        nonlocal cycles
+        visited.add(node)
+        rec_stack.add(node)
+        for parent in graph.get(node, []):
+            if parent not in visited:
+                _dfs(parent)
+            elif parent in rec_stack:
+                cycles += 1
+        rec_stack.discard(node)
+
+    for node in graph:
+        if node not in visited:
+            _dfs(node)
+    return cycles

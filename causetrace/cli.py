@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .core import JSONStore, ReplayEngine, TimelineRenderer, trace_causal_chain, validate_session
+from .causality import causal_quality_report
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
@@ -133,6 +134,7 @@ def cli(argv: list[str] | None = None) -> None:
 
     p_tr = sub.add_parser("tree", help="Show causal tree (parent→child)")
     p_tr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_tr.add_argument("--quality", "-q", action="store_true", help="Show causal quality report")
 
     p_gr = sub.add_parser("graph", help="Show multi-parent DAG (fan-in)")
     p_gr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
@@ -233,7 +235,11 @@ def cli(argv: list[str] | None = None) -> None:
         for sid in sessions:
             evs = store.load(sid)
             dur = _session_duration(evs)
-            print(f"  {sid}  ({len(evs)} events, {dur})")
+            agent = _detect_agent(evs)
+            linked = sum(1 for e in evs if e.parent_event_id)
+            link_pct = int(linked / len(evs) * 100) if evs else 0
+            agent_tag = f"[{agent}]" if agent else ""
+            print(f"  {sid}  ({len(evs)} events, {dur}) {agent_tag} linked:{link_pct}%")
 
     elif args.command == "timeline":
         sid, events = _load(args.session_id)
@@ -244,6 +250,20 @@ def cli(argv: list[str] | None = None) -> None:
         sid, events = _load(args.session_id)
         print(f"Session: {sid}  ({len(events)} events, causal tree)\n")
         TimelineRenderer.print_tree(events)
+        if args.quality:
+            report = causal_quality_report(events)
+            print()
+            print(f"  Causal quality report:")
+            print(f"    Linked events: {report['linked_events']}/{report['total_events']}")
+            print(f"    Multi-parent:  {report['multi_parent_events']}")
+            print(f"    Max depth:     {report['max_depth']}")
+            print(f"    Avg chain:     {report['avg_chain_length']}")
+            print(f"    Cycles:        {report['cycles_remaining']}")
+            print(f"    Score:         {_quality_bar(report['score'])}")
+            if report['score'] < 0.5:
+                print(f"    ⚠ Session has weak causal links (likely inferred/heuristic)")
+            elif report['cycles_remaining'] > 0:
+                print(f"    ⚠ Remaining cycles detected in causal graph")
 
     elif args.command == "graph":
         sid, events = _load(args.session_id)
@@ -468,6 +488,19 @@ def _session_duration(events) -> str:
         return ""
 
 
+def _detect_agent(events) -> str:
+    """Detect agent type from events (stops at first direct match)."""
+    for ev in events:
+        if ev.agent:
+            return ev.agent
+        if ev.provider:
+            return ev.provider
+    tool_names = {ev.tool_name.lower() for ev in events}
+    if "thinking" in tool_names:
+        return "claude-code"
+    return "unknown"
+
+
 def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
     """Handle `causetrace aider`."""
     from .hooks.aider_bridge import run_with_tracing
@@ -507,6 +540,11 @@ def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"Codex CLI tool calls ({len(events)} events, {args.sessions} sessions)\n")
     TimelineRenderer.print_timeline(events)
+    if len(events) > 2:
+        report = causal_quality_report(events)
+        if report["score"] < 0.7:
+            print(f"\n  ⚠ Causal quality: {_quality_bar(report['score'])}")
+            print(f"     (Codex logs lack native causality — links are heuristic)")
     if args.save:
         for ev in events:
             store.append("codex_latest", ev)
@@ -529,3 +567,18 @@ def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     cli()
+
+
+def _quality_bar(score: float) -> str:
+    """Render quality score as a colored bar."""
+    bar_len = 20
+    filled = int(score * bar_len)
+    bar = "█" * filled + "░" * (bar_len - filled)
+    pct = int(score * 100)
+    if score >= 0.7:
+        color = "\033[32m"
+    elif score >= 0.4:
+        color = "\033[33m"
+    else:
+        color = "\033[31m"
+    return f"{color}{bar} {pct}%\033[0m"

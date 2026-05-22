@@ -24,24 +24,13 @@ from causetrace.causality import infer_relations
 CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
 _SESSION_DIR = CODEX_HOME / "sessions"
 
-# Codex tool call action types
-_TOOL_ACTIONS = {
-    "Bash",
-    "Read",
-    "Write",
-    "Edit",
-    "Search",
-    "Glob",
-    "WebFetch",
-    "WebSearch",
-}
-
 # Map Codex action names to causetrace tool names
 _ACTION_MAP: Dict[str, str] = {
     "bash": "Bash",
     "shell": "Bash",
     "command": "Bash",
     "run": "Bash",
+    "exec_command": "Bash",
     "read": "Read",
     "read_file": "Read",
     "view": "Read",
@@ -50,6 +39,7 @@ _ACTION_MAP: Dict[str, str] = {
     "create": "Write",
     "edit": "Edit",
     "edit_file": "Edit",
+    "apply_patch": "Edit",
     "search": "Grep",
     "grep": "Grep",
     "glob": "Glob",
@@ -105,6 +95,66 @@ def _parse_jsonl_line(line: str) -> Optional[dict]:
         return json.loads(line)
     except json.JSONDecodeError:
         return None
+
+
+def _parse_new_format(entry: dict) -> Optional[dict]:
+    """Parse Codex v0.130.0+ response_item format.
+
+    New format splits tool calls across response_item entries:
+      {"type": "response_item", "payload": {"type": "function_call", "name": "...", "arguments": "{...}", "call_id": "..."}}
+      {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "...", "output": "..."}}
+      {"type": "response_item", "payload": {"type": "custom_tool_call", "status": "completed", "call_id": "...", "name": "...", "input": "..."}}
+      {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "...", "output": "..."}}
+
+    Returns dict with kind/call_id/tool_name/tool_input/tool_output, or None.
+    """
+    if entry.get("type") != "response_item":
+        return None
+
+    payload = entry.get("payload", {})
+    ptype = payload.get("type", "")
+
+    if ptype == "function_call":
+        name = payload.get("name", "")
+        args_str = payload.get("arguments", "{}")
+        try:
+            args = json.loads(args_str) if isinstance(args_str, str) else args_str
+        except json.JSONDecodeError:
+            args = {"raw": args_str}
+        return {
+            "kind": "call",
+            "call_id": payload.get("call_id", ""),
+            "tool_name": _normalize_action(name),
+            "tool_input": args if isinstance(args, dict) else str(args),
+            "timestamp": entry.get("timestamp"),
+        }
+
+    if ptype == "function_call_output":
+        return {
+            "kind": "output",
+            "call_id": payload.get("call_id", ""),
+            "tool_output": payload.get("output", ""),
+        }
+
+    if ptype == "custom_tool_call":
+        name = payload.get("name", "")
+        inp = payload.get("input", payload.get("arguments", {}))
+        return {
+            "kind": "call",
+            "call_id": payload.get("call_id", ""),
+            "tool_name": _normalize_action(name),
+            "tool_input": inp if isinstance(inp, dict) else str(inp),
+            "timestamp": entry.get("timestamp"),
+        }
+
+    if ptype == "custom_tool_call_output":
+        return {
+            "kind": "output",
+            "call_id": payload.get("call_id", ""),
+            "tool_output": payload.get("output", ""),
+        }
+
+    return None
 
 
 def _extract_codex_tool_call(entry: dict) -> Optional[Tuple[str, dict, str]]:
@@ -171,6 +221,9 @@ def _parse_timestamp(entry: dict) -> Optional[str]:
 def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
     """Scan Codex CLI session logs and extract all tool calls as ToolEvents.
 
+    Handles both old format (action/observation) and new v0.130.0+ format
+    (response_item function_call/function_call_output paired by call_id).
+
     Args:
         max_sessions: Number of most recent session directories to scan.
 
@@ -187,11 +240,25 @@ def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
         except OSError:
             continue
 
+        # Two-pass for new format: collect calls and outputs keyed by call_id
+        calls: Dict[str, dict] = {}
+        outputs: Dict[str, str] = {}
+
         for line in content.splitlines():
             entry = _parse_jsonl_line(line)
             if not entry:
                 continue
 
+            # Try new format first (response_item)
+            parsed = _parse_new_format(entry)
+            if parsed:
+                if parsed["kind"] == "call":
+                    calls[parsed["call_id"]] = parsed
+                elif parsed["kind"] == "output":
+                    outputs[parsed["call_id"]] = parsed["tool_output"]
+                continue
+
+            # Fall back to old format (action/observation)
             result = _extract_codex_tool_call(entry)
             if result is None:
                 continue
@@ -200,14 +267,12 @@ def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
             if not tool_name:
                 continue
 
-            # Deduplicate
             dedup_key = f"{f.name}:{tool_name}:{str(tool_input)[:100]}"
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
 
             timestamp = _parse_timestamp(entry)
-
             event = ToolEvent(
                 tool_name=tool_name,
                 tool_input=tool_input if isinstance(tool_input, dict) else str(tool_input),
@@ -217,6 +282,30 @@ def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
             )
             events.append(event)
 
+        # Pair new-format calls with outputs and create events
+        for call_id, call in calls.items():
+            tool_name = call["tool_name"]
+            tool_input = call["tool_input"]
+            output = outputs.get(call_id, "")
+
+            dedup_key = f"{f.name}:{tool_name}:{str(tool_input)[:100]}"
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            event = ToolEvent(
+                tool_name=tool_name,
+                tool_input=tool_input if isinstance(tool_input, dict) else str(tool_input),
+                tool_output=output or None,
+                timestamp=call.get("timestamp"),
+                agent="codex",
+            )
+            events.append(event)
+
+    # 按时间戳排序事件，确保因果推断的顺序正确
+    events.sort(key=lambda x: x.timestamp or "")
+    # 过滤掉没有时间戳的无效事件
+    events = [ev for ev in events if ev.timestamp]
     infer_relations(events)
     return events
 
