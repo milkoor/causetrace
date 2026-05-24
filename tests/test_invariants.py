@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from causetrace.core import (
     JSONStore, ReplayEngine, TimelineRenderer, ToolEvent, TraceRecorder, build_tree,
+    compress_tree, CompressedRun,
     validate_session, SCHEMA_VERSION,
 )
 
@@ -433,3 +434,109 @@ def test_patterns_cli_csv_selects_csv_without_transitions_only():
         )
     assert result.returncode == 0
     assert result.stdout.splitlines() == ["from,to,count", "Read,Edit,1"]
+
+
+# ── Tree compression (graph compression — Iter 3) ──
+
+def test_compress_tree_short_run_not_compressed():
+    """Consecutive same-tool runs shorter than min_run stay as-is."""
+    evs = [
+        ToolEvent("Read", {}, event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b2", parent_event_id="b1"),
+    ]
+    tree = build_tree(evs)
+    compressed = compress_tree(tree, min_run=3)
+    top = compressed[0]
+    assert top["event"].tool_name == "Read"
+    middle = top["children"][0]
+    assert middle["event"].tool_name == "Bash"
+    assert not isinstance(middle["event"], CompressedRun)
+
+
+def test_compress_tree_long_chain():
+    """Consecutive same-tool run >= min_run collapses to CompressedRun."""
+    evs = [
+        ToolEvent("Bash", {}, event_id="b0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="b0"),
+        ToolEvent("Bash", {}, event_id="b2", parent_event_id="b1"),
+        ToolEvent("Bash", {}, event_id="b3", parent_event_id="b2"),
+    ]
+    tree = build_tree(evs)
+    compressed = compress_tree(tree, min_run=3)
+    run = compressed[0]
+    assert isinstance(run["event"], CompressedRun)
+    assert run["event"].tool_name == "Bash"
+    assert run["event"].count == 4
+    assert len(run["event"].events) == 4
+
+
+def test_compress_tree_fan_out_preserved():
+    """Fan-out nodes stop compression even if tool matches."""
+    evs = [
+        ToolEvent("Bash", {}, event_id="b0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="b0"),
+        ToolEvent("Edit", {}, event_id="e1", parent_event_id="b0"),
+    ]
+    tree = build_tree(evs)
+    compressed = compress_tree(tree, min_run=2)
+    root = compressed[0]
+    assert root["event"].tool_name == "Bash"
+    assert len(root["children"]) == 2
+    for c in root["children"]:
+        assert not isinstance(c["event"], CompressedRun)
+
+
+def test_compress_tree_mixed_tool_chain():
+    """Different tool names break compression."""
+    evs = [
+        ToolEvent("Read", {}, event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b2", parent_event_id="b1"),
+        ToolEvent("Edit", {}, event_id="e3", parent_event_id="b2"),
+    ]
+    tree = build_tree(evs)
+    compressed = compress_tree(tree, min_run=2)
+    read_node = compressed[0]
+    bash_run = read_node["children"][0]
+    assert isinstance(bash_run["event"], CompressedRun)
+    assert bash_run["event"].count == 2
+    assert bash_run["event"].tool_name == "Bash"
+    edit_child = bash_run["children"][0]
+    assert edit_child["event"].tool_name == "Edit"
+
+
+def test_compress_tree_empty():
+    """Empty tree returns empty list."""
+    assert compress_tree([], min_run=3) == []
+
+
+def test_render_tree_compress_shows_count():
+    """render_tree with compress>0 shows [xN] markers."""
+    evs = [
+        ToolEvent("Bash", {}, event_id="b0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="b0"),
+        ToolEvent("Bash", {}, event_id="b2", parent_event_id="b1"),
+    ]
+    output = TimelineRenderer.render_tree(evs, compress=3)
+    assert "[x3]" in output
+
+
+def test_print_tree_compress_no_crash():
+    """print_tree with compress flag does not crash."""
+    evs = [
+        ToolEvent("Read", {}, event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b1", parent_event_id="r0"),
+        ToolEvent("Bash", {}, event_id="b2", parent_event_id="b1"),
+        ToolEvent("Edit", {}, event_id="e3", parent_event_id="b2"),
+    ]
+    import io, sys
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        TimelineRenderer.print_tree(evs, compress=3)
+    finally:
+        sys.stdout = old
+    output = buf.getvalue()
+    assert "Read" in output

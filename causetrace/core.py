@@ -29,6 +29,7 @@ def _validate_session_id(session_id: str) -> None:
 __all__ = [
     "ToolEvent", "TraceRecorder", "JSONStore",
     "TimelineRenderer", "ReplayEngine", "build_tree",
+    "compress_tree", "CompressedRun",
     "validate_session", "SCHEMA_VERSION",
 ]
 
@@ -130,6 +131,120 @@ def _parse_parents(ev: ToolEvent) -> List[str]:
     if not ev.parent_event_id:
         return []
     return [p.strip() for p in ev.parent_event_id.split(",") if p.strip()]
+
+
+class CompressedRun:
+    """A run of consecutive same-tool events compressed into a single node.
+
+    Preserves event details for reversibility. Compatible with tree renderers
+    via the same attribute names as ToolEvent (tool_name, tool_input, etc.).
+    """
+    def __init__(self, tool_name: str, count: int, events: List[ToolEvent]):
+        self.tool_name = tool_name
+        self.count = count
+        self.events = events  # original events, for decompression
+
+    @property
+    def tool_input(self) -> Any:
+        return self.events[0].tool_input
+
+    @property
+    def timestamp(self) -> str:
+        return self.events[0].timestamp
+
+    @property
+    def duration_ms(self) -> float | None:
+        return self.events[0].duration_ms
+
+    @property
+    def caused_by(self) -> str | None:
+        return self.events[0].caused_by
+
+    @property
+    def event_id(self) -> str:
+        return self.events[0].event_id
+
+    def __repr__(self) -> str:
+        return f"<CompressedRun {self.tool_name} x{self.count}>"
+
+
+def compress_tree(roots: List[dict], min_run: int = 3) -> List[dict]:
+    """Compress consecutive same-tool runs in a causal tree.
+
+    Walks the tree bottom-up (post-order). When a linear chain of same-tool
+    events is found, merges them into a single CompressedRun node.
+
+    Parameters
+    ----------
+    roots:
+        Tree from build_tree() — list of ``{"event": ToolEvent, "children": [...]}``.
+    min_run:
+        Minimum consecutive events to compress (default 3). Shorter runs
+        are left as-is.
+
+    Returns a new tree (original is not modified).
+    """
+    def _walk(node: dict) -> dict:
+        ev = node["event"]
+        children = node["children"]
+
+        # Process children first (post-order)
+        compressed_kids = [_walk(c) for c in children]
+
+        if len(compressed_kids) == 1:
+            kid = compressed_kids[0]
+            kid_ev = kid["event"]
+
+            if isinstance(kid_ev, CompressedRun) and kid_ev.tool_name == ev.tool_name:
+                # Merge this node into the existing run below
+                merged = CompressedRun(ev.tool_name, kid_ev.count + 1,
+                                       [ev] + kid_ev.events)
+                return {"event": merged, "children": kid["children"]}
+
+            if not isinstance(kid_ev, CompressedRun) and kid_ev.tool_name == ev.tool_name:
+                # Start a new run with this node + child
+                run = CompressedRun(ev.tool_name, 2, [ev, kid_ev])
+                # Skip the child node — its children become the run's children
+                return {"event": run, "children": kid["children"]}
+
+        # No compression at this node
+        if len(compressed_kids) == 1 and isinstance(compressed_kids[0]["event"],
+                                                     CompressedRun):
+            kid = compressed_kids[0]
+            if kid["event"].count < min_run:
+                # Decompress: expand the run back to individual nodes
+                expanded = _decompress_run(kid)
+                return {"event": ev, "children": [expanded]}
+
+        return {"event": ev, "children": compressed_kids}
+
+    def _decompress_run(node: dict) -> dict:
+        """Expand a CompressedRun back to individual ToolEvent nodes.
+        Returns the top node of the decompressed chain.
+        """
+        run = node["event"]
+        nodes = []
+        for ev in run.events:
+            nodes.append({"event": ev, "children": []})
+        if nodes:
+            for i in range(len(nodes) - 1):
+                nodes[i]["children"] = [nodes[i + 1]]
+            nodes[-1]["children"] = node["children"]
+        return nodes[0] if nodes else {"event": run.events[0], "children": node["children"]}
+
+    result = [_walk(r) for r in roots]
+
+    # Final pass: decompress runs shorter than min_run at the top level
+    def _final_pass(nodes: List[dict]) -> List[dict]:
+        out = []
+        for n in nodes:
+            if isinstance(n["event"], CompressedRun) and n["event"].count < min_run:
+                out.append(_decompress_run(n))
+            else:
+                out.append(n)
+        return out
+
+    return _final_pass(result)
 
 
 def build_tree(events: List[ToolEvent]) -> List[dict]:
@@ -560,9 +675,16 @@ class TimelineRenderer:
         return "\n".join(lines)
 
     @classmethod
-    def render_tree(cls, events: List[ToolEvent]) -> str:
-        """Render as causal tree showing parent→child relationships."""
+    @classmethod
+    def render_tree(cls, events: List[ToolEvent], compress: int = 0) -> str:
+        """Render as causal tree showing parent→child relationships.
+
+        If *compress* > 0, consecutive same-tool runs of at least *compress*
+        are collapsed into ``Tool [×N]`` nodes.
+        """
         roots = build_tree(events)
+        if compress:
+            roots = compress_tree(roots, min_run=compress)
         lines: list[str] = []
 
         def _walk(nodes: List[dict], depth: int = 0) -> None:
@@ -575,12 +697,24 @@ class TimelineRenderer:
                 inp = _fmt_input(ev.tool_input)
                 dur = cls._dur(ev)
 
+                if isinstance(ev, CompressedRun):
+                    tool_display = (
+                        f"{color}{ev.tool_name}{cls.RESET}({inp})"
+                        f"{cls.DIM}{dur}{cls.RESET} "
+                        f"{cls.DIM}[x{ev.count}]{cls.RESET}"
+                    )
+                else:
+                    tool_display = (
+                        f"{color}{ev.tool_name}{cls.RESET}({inp})"
+                        f"{cls.DIM}{dur}{cls.RESET}"
+                    )
+
                 if depth == 0:
                     branch = ""
                 elif is_last:
-                    branch = "  └─ "
+                    branch = "  \u2514\u2500 "
                 else:
-                    branch = "  ├─ "
+                    branch = "  \u251c\u2500 "
 
                 causal = ""
                 if ev.caused_by and depth == 0:
@@ -588,7 +722,7 @@ class TimelineRenderer:
 
                 lines.append(
                     f"{prefix}{branch}{cls.DIM}[{ts}]{cls.RESET} "
-                    f"{color}{ev.tool_name}{cls.RESET}({inp}){cls.DIM}{dur}{cls.RESET}{causal}"
+                    f"{tool_display}{causal}"
                 )
                 if node["children"]:
                     _walk(node["children"], depth + 1)
@@ -649,8 +783,8 @@ class TimelineRenderer:
         print(cls.render(events, show_output=show_output))
 
     @classmethod
-    def print_tree(cls, events: List[ToolEvent]) -> None:
-        print(cls.render_tree(events))
+    def print_tree(cls, events: List[ToolEvent], compress: int = 0) -> None:
+        print(cls.render_tree(events, compress=compress))
 
     @classmethod
     def print_graph(cls, events: List[ToolEvent], show_output: bool = False) -> None:

@@ -145,6 +145,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_tr = sub.add_parser("tree", help="Show causal tree (parent→child)")
     p_tr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
     p_tr.add_argument("--quality", "-q", action="store_true", help="Show causal quality report")
+    p_tr.add_argument("--compress", "-c", type=int, nargs="?", const=3, default=0,
+                      help="Compress consecutive same-tool runs (default: 3, use -c to set threshold)")
 
     p_gr = sub.add_parser("graph", help="Show multi-parent DAG (fan-in)")
     p_gr.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
@@ -309,7 +311,7 @@ def cli(argv: list[str] | None = None) -> None:
     elif args.command == "tree":
         sid, events = _load(args.session_id)
         print(f"Session: {sid}  ({len(events)} events, causal tree)\n")
-        TimelineRenderer.print_tree(events)
+        TimelineRenderer.print_tree(events, compress=args.compress)
         if args.quality:
             report = causal_quality_report(events)
             print()
