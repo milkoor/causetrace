@@ -15,7 +15,8 @@ import pytest
 from causetrace.core import ToolEvent, validate_session
 from causetrace.analysis import (
     compute_stats, find_roots, longest_path, connected_components,
-    detect_common_transitions, detect_repeated_paths, windowed,
+    detect_common_transitions, detect_fan_in_patterns, detect_repeated_paths,
+    windowed,
 )
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "dags"
@@ -341,3 +342,30 @@ def test_time_windows_retain_overlapping_events():
     windows = [[event.tool_name for event in items]
                for items in windowed(events, strategy="time", size=10, overlap=5)]
     assert windows[:2] == [["0", "5", "8"], ["5", "8", "11"]]
+
+
+def test_external_parent_reference_becomes_local_root():
+    events = [
+        ToolEvent("Read", {}, event_id="a", parent_event_id="outside"),
+        ToolEvent("Edit", {}, event_id="b", parent_event_id="a"),
+    ]
+    stats = compute_stats(events)
+    assert stats["root_count"] == 1
+    assert stats["max_depth"] == 1
+    assert find_roots(events)[0]["event_id"] == "a"
+    assert longest_path(events) == ["a", "b"]
+    assert connected_components(events) == [{
+        "size": 2,
+        "root_count": 1,
+        "event_ids": ["a", "b"],
+    }]
+
+
+def test_fan_in_parent_tools_are_tool_names():
+    events = [
+        ToolEvent("Read", {}, event_id="r1"),
+        ToolEvent("Grep", {}, event_id="r2"),
+        ToolEvent("Edit", {}, event_id="m", parent_event_id="r1,r2"),
+    ]
+    patterns = detect_fan_in_patterns(events)
+    assert patterns[0]["parent_tools"] == ["Read", "Grep"]

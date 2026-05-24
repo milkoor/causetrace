@@ -491,16 +491,19 @@ def cli(argv: list[str] | None = None) -> None:
 
         transitions = detect_common_transitions(events, top_n=args.top)
 
+        # CSV represents the transition table regardless of other view flags.
+        if args.csv:
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["from", "to", "count"])
+            for t in transitions:
+                w.writerow([t["from_tool"], t["to_tool"], t["count"]])
+            print(buf.getvalue(), end="")
+            return
+
         # --transitions-only: skip repeated paths and fan-in
         if args.transitions_only:
-            if args.csv:
-                buf = io.StringIO()
-                w = csv.writer(buf)
-                w.writerow(["from", "to", "count"])
-                for t in transitions:
-                    w.writerow([t["from_tool"], t["to_tool"], t["count"]])
-                print(buf.getvalue(), end="")
-            elif args.json:
+            if args.json:
                 json.dump(transitions, sys.stdout)
                 print()
             else:

@@ -410,3 +410,26 @@ def test_validate_cli_rejects_non_event_json_without_crashing():
         )
     assert result.returncode != 0
     assert "invalid event data" in result.stdout
+
+
+def test_patterns_cli_csv_selects_csv_without_transitions_only():
+    import subprocess
+
+    events = [
+        ToolEvent(tool_name="Read", tool_input={}, event_id="r"),
+        ToolEvent(tool_name="Edit", tool_input={}, event_id="e", parent_event_id="r"),
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        store_dir = Path(tmp) / ".causetrace" / "data"
+        store_dir.mkdir(parents=True)
+        (store_dir / "csv.jsonl").write_text(
+            "\n".join(json.dumps(event.to_dict()) for event in events) + "\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "causetrace", "patterns", "csv", "--csv"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "HOME": tmp},
+        )
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == ["from,to,count", "Read,Edit,1"]

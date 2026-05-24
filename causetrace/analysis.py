@@ -31,18 +31,29 @@ def _parse_parents(parent_event_id: Optional[str]) -> List[str]:
     return [p.strip() for p in parent_event_id.split(",") if p.strip()]
 
 
-def _build_child_index(events) -> Dict[str, List[str]]:
-    """Build parent_id → [child_id, ...] index from events."""
+def _build_graph_indexes(events) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    """Build indexes using only parent-child edges present in this session."""
+    event_ids = {ev.event_id for ev in events}
     children: Dict[str, List[str]] = defaultdict(list)
+    parents: Dict[str, List[str]] = {}
     for ev in events:
-        for pid in _parse_parents(ev.parent_event_id):
+        local_parents = [
+            pid for pid in _parse_parents(ev.parent_event_id) if pid in event_ids
+        ]
+        parents[ev.event_id] = local_parents
+        for pid in local_parents:
             children[pid].append(ev.event_id)
-    return dict(children)
+    return dict(children), parents
+
+
+def _build_child_index(events) -> Dict[str, List[str]]:
+    """Build parent_id -> [child_id, ...] index for local causal edges."""
+    return _build_graph_indexes(events)[0]
 
 
 def _build_parent_map(events) -> Dict[str, List[str]]:
-    """Build event_id → [parent_id, ...] map from events."""
-    return {ev.event_id: _parse_parents(ev.parent_event_id) for ev in events}
+    """Build event_id -> [parent_id, ...] map for local causal edges."""
+    return _build_graph_indexes(events)[1]
 
 
 def _by_id(events) -> Dict[str, Any]:
@@ -148,8 +159,7 @@ def compute_stats(events) -> dict:
     tool_freq = dict(Counter(tool_names).most_common())
     tool_count = len(tool_freq)
 
-    child_index = _build_child_index(events)
-    parent_map = _build_parent_map(events)
+    child_index, parent_map = _build_graph_indexes(events)
 
     # ── Roots and leaves ──
     roots = [ev for ev in events if not parent_map[ev.event_id]]
@@ -174,12 +184,12 @@ def compute_stats(events) -> dict:
     fan_out_max = max(fan_outs) if fan_outs else 0
 
     # ── Link ratio ──
-    linked = sum(1 for ev in events if ev.parent_event_id)
+    linked = sum(1 for ev in events if parent_map[ev.event_id])
     link_ratio = linked / total if total else 0.0
 
     # ── Multi-parent ──
     multi_parent_count = sum(
-        1 for ev in events if ev.parent_event_id and "," in ev.parent_event_id
+        1 for ev in events if len(parent_map[ev.event_id]) >= 2
     )
 
     # ── Chain length ──
@@ -226,8 +236,7 @@ def find_roots(events) -> List[dict]:
     if not events:
         return []
 
-    child_index = _build_child_index(events)
-    parent_map = _build_parent_map(events)
+    child_index, parent_map = _build_graph_indexes(events)
     index = _by_id(events)
 
     def _count_descendants(node_id: str) -> int:
@@ -271,8 +280,7 @@ def longest_path(events) -> List[str]:
     if not events:
         return []
 
-    child_index = _build_child_index(events)
-    parent_map = _build_parent_map(events)
+    child_index, parent_map = _build_graph_indexes(events)
 
     # Find roots
     roots = [ev.event_id for ev in events if not parent_map[ev.event_id]]
@@ -325,7 +333,7 @@ def connected_components(events) -> List[dict]:
     if not events:
         return []
 
-    parent_map = _build_parent_map(events)
+    _, parent_map = _build_graph_indexes(events)
 
     # Build undirected adjacency
     adj: Dict[str, List[str]] = defaultdict(list)
@@ -532,15 +540,17 @@ def detect_fan_in_patterns(events) -> List[dict]:
     Returns list of dicts sorted by parent_count descending:
       event_id, tool_name, parent_count, parent_tools
     """
+    index = _by_id(events)
+    parent_map = _build_parent_map(events)
     results = []
     for ev in events:
-        parents = _parse_parents(ev.parent_event_id)
+        parents = parent_map[ev.event_id]
         if len(parents) >= 2:
             results.append({
                 "event_id": ev.event_id,
                 "tool_name": ev.tool_name,
                 "parent_count": len(parents),
-                "parent_tools": parents,  # raw IDs
+                "parent_tools": [index[parent_id].tool_name for parent_id in parents],
             })
 
     results.sort(key=lambda r: -r["parent_count"])
@@ -560,8 +570,7 @@ def detect_branch_collapse(events) -> List[dict]:
     if not events:
         return []
 
-    child_index = _build_child_index(events)
-    parent_map = _build_parent_map(events)
+    child_index, parent_map = _build_graph_indexes(events)
     index = _by_id(events)
 
     # Count how many unique root paths converge to each node
