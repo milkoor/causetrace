@@ -18,7 +18,7 @@ from causetrace.analysis import (
     compute_stats, find_roots, longest_path, connected_components,
     detect_common_transitions, detect_fan_in_patterns, detect_repeated_paths,
     windowed, transition_entropy, branch_density, root_spawning_rate,
-    path_reuse_ratio, classify_topology,
+    path_reuse_ratio, classify_topology, detect_topology_shift,
 )
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "dags"
@@ -487,6 +487,47 @@ def test_classify_topology_mixed():
              "avg_depth": 5.0, "fan_out_avg": 0.9, "fan_out_max": 3,
              "multi_parent_count": 1}
     assert classify_topology(stats) == "mixed"
+
+
+# ── Topology shift detection ──
+
+def test_detect_shift_empty():
+    assert detect_topology_shift([]) == []
+
+def test_detect_shift_too_few_events():
+    evs = [ToolEvent("Read", {}, event_id=f"e{i}") for i in range(10)]
+    assert detect_topology_shift(evs, window_size=5) == []
+
+def test_detect_shift_topology_change():
+    """Session with phase change (forest → deep chain) should register shifts.
+
+    Phase 1: 10 small forests (root + 5 children each, diverse tool types)
+             → 60 events with varying root_count/entropy per window
+    Phase 2: 60-event single tool chain (all Bash, 1 root at start)
+             → root_count drops to 0, entropy drops to 0, reuse spikes
+
+    With window_size=20 → 6 windows, baseline=windows 0-2 (phase 1),
+    checked=windows 3-5 (phase 2 transition). Metric variance in baseline
+    ensures std > 0 so z-scores can fire.
+    """
+    evs = []
+    tools = ["Read", "Edit", "Search", "Bash", "Read"]
+    # Phase 1: 60 events — 10 small forests (6 events each: root + 5 children)
+    for forest_idx in range(10):
+        tool = tools[forest_idx % len(tools)]
+        root_id = f"forest_{forest_idx}_root"
+        evs.append(ToolEvent(tool, {}, event_id=root_id))
+        for child_idx in range(5):
+            eid = f"forest_{forest_idx}_{child_idx}"
+            evs.append(ToolEvent(tool, {}, event_id=eid, parent_event_id=root_id))
+    # Phase 2: 60-event deep chain (all Bash, single root then depth)
+    evs.append(ToolEvent("Bash", {}, event_id="chain_root"))
+    for i in range(60):
+        eid = f"chain_{i}"
+        evs.append(ToolEvent("Bash", {}, event_id=eid, parent_event_id=f"chain_{i-1}" if i > 0 else "chain_root"))
+
+    shifts = detect_topology_shift(evs, window_size=20, z_threshold=1.5)
+    assert len(shifts) >= 1, f"Expected >= 1 shift, got {len(shifts)}"
 
 
 # ── Invariant battery (parametrized over fixtures) ──

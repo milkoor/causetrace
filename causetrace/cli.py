@@ -13,7 +13,7 @@ from .analysis import (
     compute_stats, find_roots, longest_path, fan_out_distribution,
     connected_components, detect_repeated_paths, detect_common_transitions,
     detect_fan_in_patterns, detect_branch_collapse, classify_topology,
-    TOPOLOGY_PHENOTYPES,
+    detect_topology_shift, TOPOLOGY_PHENOTYPES,
 )
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
@@ -247,6 +247,11 @@ def cli(argv: list[str] | None = None) -> None:
     p_cmp.add_argument("--top", type=int, default=8, help="Top N transitions per session (default: 8)")
 
     sub.add_parser("doctor", help="Diagnose agent configuration and data sources")
+
+    p_sh = sub.add_parser("shifts", help="Detect topology shifts across time windows")
+    p_sh.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_sh.add_argument("--window", type=int, default=50, help="Window size in events (default: 50)")
+    p_sh.add_argument("--z", type=float, default=2.0, help="Z-score threshold (default: 2.0)")
 
     sub.add_parser("demo", help="Create and display a saved demo causal trace")
 
@@ -575,6 +580,28 @@ def cli(argv: list[str] | None = None) -> None:
 
     elif args.command == "compare":
         _handle_compare(store, args)
+
+    elif args.command == "shifts":
+        sid = _resolve_sid(args.session_id)
+        if not sid:
+            print("No sessions found.")
+            sys.exit(1)
+        events = store.load(sid)
+        if not events:
+            print(f"No events for session: {sid}")
+            sys.exit(1)
+        shifts = detect_topology_shift(events, window_size=args.window, z_threshold=args.z)
+        if not shifts:
+            print(f"Session: {sid}  ({len(events)} events, window={args.window})\n")
+            print("  No significant topology shifts detected.")
+            sys.exit(0)
+        print(f"Session: {sid}  ({len(events)} events, window={args.window}, z≥{args.z})\n")
+        print(f"  {len(shifts)} topology shift(s) detected:\n")
+        for s in shifts:
+            metrics = ", ".join(f"{k} (z={v})" for k, v in s["shifts"].items())
+            print(f"  Window {s['window']:3d}  events [{s['event_index_start']}-{s['event_index_end']})")
+            print(f"         {metrics}")
+            print()
 
     elif args.command == "doctor":
         results = _run_doctor()

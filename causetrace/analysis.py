@@ -11,6 +11,9 @@ Layer 1.2 — Entropy & density (derived topological measures):
 Layer 1.3 — Morphology (structural phenotype classification):
     classify_topology
 
+Layer 1.4 — Drift detection (structural change over time):
+    detect_topology_shift
+
 Layer 2 — Pattern (repeated structures, no semantic interpretation):
     detect_repeated_paths, detect_common_transitions,
     detect_fan_in_patterns, detect_branch_collapse
@@ -558,6 +561,105 @@ TOPOLOGY_PHENOTYPES = {
     "collapsed_repair": "Significant multi-parent convergence",
     "mixed": "No dominant structural phenotype",
 }
+
+
+# ---------------------------------------------------------------------------
+# Layer 1.4 — Drift detection (structural change over time)
+# ---------------------------------------------------------------------------
+
+def detect_topology_shift(
+    events,
+    window_size: int = 50,
+    z_threshold: float = 2.0,
+) -> List[dict]:
+    """Detect statistically significant topology changes across time windows.
+
+    Non-overlapping count-based windows — each window's metrics are compared
+    against the running mean and standard deviation of all preceding windows.
+    Windows before a stable baseline (3 windows) are not checked.
+
+    Metrics tracked per window:
+
+    - ``root_count`` — independent root events (root spawning rate)
+    - ``transition_entropy`` — tool-to-tool diversity
+    - ``path_reuse_ratio`` — repeated subpath prevalence
+    - ``avg_branch_density`` — branching vs depth
+
+    Returns list of shift points sorted by window index::
+
+        {
+            "window": int,
+            "event_index_start": int,
+            "event_index_end": int,
+            "shifts": {"metric_name": z_score},
+        }
+    """
+    if not events:
+        return []
+
+    windows = list(windowed(events, strategy="count", size=window_size, overlap=0))
+    if len(windows) < 4:
+        return []
+
+    running_sums: dict[str, float] = {}
+    running_sq: dict[str, float] = {}
+    running_count: dict[str, int] = {}
+    shifts: List[dict] = []
+
+    event_cursor = 0
+
+    for w_idx, win in enumerate(windows):
+        stats = compute_stats(win)
+        ent = transition_entropy(win)
+        reuse = path_reuse_ratio(win, max_depth=10)
+        bd = branch_density(win)
+
+        metrics = {
+            "root_count": stats["root_count"],
+            "transition_entropy": ent,
+            "path_reuse_ratio": reuse["reuse_ratio"],
+            "avg_branch_density": bd["avg_branch_density"],
+        }
+
+        win_start = event_cursor
+        win_end = event_cursor + len(win)
+        event_cursor = win_end
+
+        if w_idx < 3:
+            # Build baseline from first 3 windows
+            for k, v in metrics.items():
+                running_sums[k] = running_sums.get(k, 0.0) + v
+                running_sq[k] = running_sq.get(k, 0.0) + v * v
+                running_count[k] = running_count.get(k, 0) + 1
+            continue
+
+        # Compute z-scores
+        window_shifts = {}
+        for k, v in metrics.items():
+            n = running_count.get(k, 1)
+            mean = running_sums[k] / n
+            var = (running_sq[k] / n) - (mean * mean)
+            std = var ** 0.5 if var > 0 else 0.0
+            if std > 0:
+                z = (v - mean) / std
+                if abs(z) >= z_threshold:
+                    window_shifts[k] = round(z, 2)
+
+        if window_shifts:
+            shifts.append({
+                "window": w_idx,
+                "event_index_start": win_start,
+                "event_index_end": win_end,
+                "shifts": window_shifts,
+            })
+
+        # Update running stats
+        for k, v in metrics.items():
+            running_sums[k] = running_sums.get(k, 0.0) + v
+            running_sq[k] = running_sq.get(k, 0.0) + v * v
+            running_count[k] = running_count.get(k, 0) + 1
+
+    return shifts
 
 
 # ---------------------------------------------------------------------------
