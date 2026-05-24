@@ -66,7 +66,8 @@ causetrace uninstall-claude-hook           # Remove only managed hooks
 ## Architecture
 
 - **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), append-only JSONL storage (`JSONStore`), tree/DAG builders, renderers, `ReplayEngine`.
-- **`causetrace/analysis.py`** — Session analysis primitives (structural + pattern). Layer 1: graph/path/topology metrics (compute_stats, find_roots, longest_path). Layer 2: structural patterns without semantic naming (detect_repeated_paths, detect_common_transitions, detect_fan_in_patterns, detect_branch_collapse).
+- **`causetrace/invariants.py`** — Composable DAG correctness checkers (acyclicity, unique IDs, root definition, local references). Used by DAG fixture tests.
+- **`causetrace/analysis.py`** — Session analysis primitives (structural + pattern). Layer 1: graph/path/topology metrics (compute_stats, find_roots, longest_path). Layer 1.2: entropy & density (transition_entropy, branch_density, root_spawning_rate, path_reuse_ratio). Layer 2: structural patterns without semantic naming (detect_repeated_paths, detect_common_transitions, detect_fan_in_patterns, detect_branch_collapse).
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
 - **`causetrace/cli.py`** — argparse-based CLI dispatching capture, analysis, annotation, and diagnostic commands.
 - **`causetrace/onboarding.py`** — Self-contained demo session generation and safe Claude Code hook settings updates.
@@ -148,7 +149,7 @@ python3 tools/promote.py devto-post docs/promotion/blog_<topic>.md
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **causetrace** (1638 symbols, 2776 relationships, 103 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **causetrace** (1697 symbols, 2856 relationships, 106 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

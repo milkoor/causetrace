@@ -36,7 +36,9 @@ Zero intra-project dependencies. Operates on ToolEvent interfaces via duck-typin
 
 **Exports:** `compute_stats`, `find_roots`, `longest_path`, `fan_out_distribution`,
 `connected_components`, `detect_repeated_paths`, `detect_common_transitions`,
-`detect_fan_in_patterns`, `detect_branch_collapse`, `windowed`
+`detect_fan_in_patterns`, `detect_branch_collapse`, `windowed`,
+`transition_entropy`, `branch_density`, `root_spawning_rate`,
+`path_reuse_ratio`
 
 **Consumed by:**
 

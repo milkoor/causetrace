@@ -17,7 +17,8 @@ from causetrace.invariants import check_invariants
 from causetrace.analysis import (
     compute_stats, find_roots, longest_path, connected_components,
     detect_common_transitions, detect_fan_in_patterns, detect_repeated_paths,
-    windowed,
+    windowed, transition_entropy, branch_density, root_spawning_rate,
+    path_reuse_ratio,
 )
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "dags"
@@ -363,6 +364,96 @@ def test_external_parent_reference_becomes_local_root():
 
 
 def test_fan_in_parent_tools_are_tool_names():
+    events = [
+        ToolEvent("Read", {}, event_id="r1"),
+        ToolEvent("Grep", {}, event_id="r2"),
+        ToolEvent("Edit", {}, event_id="m", parent_event_id="r1,r2"),
+    ]
+    patterns = detect_fan_in_patterns(events)
+    assert patterns[0]["parent_tools"] == ["Read", "Grep"]
+
+
+# ── Transition entropy ──
+
+def test_transition_entropy_chain():
+    evs = load_fixture("chain")  # root→a→b→c, all different tools
+    e = transition_entropy(evs)
+    assert e > 0, "chain with different tools should have non-zero entropy"
+
+def test_transition_entropy_single_tool():
+    evs = [
+        ToolEvent("Bash", {}, event_id="r"),
+        ToolEvent("Bash", {}, event_id="a", parent_event_id="r"),
+        ToolEvent("Bash", {}, event_id="b", parent_event_id="a"),
+    ]
+    e = transition_entropy(evs)
+    assert e == 0.0, "single transition type has zero entropy"
+
+def test_transition_entropy_empty():
+    assert transition_entropy([]) == 0.0
+
+
+# ── Branch density ──
+
+def test_branch_density_fork():
+    evs = load_fixture("fork")  # root→a, root→b (fan_out=2, max_depth=1)
+    d = branch_density(evs)
+    assert d["avg_branch_density"] > 0
+    assert d["max_branch_density"] > 0
+
+def test_branch_density_chain():
+    evs = load_fixture("chain")  # linear, avg_fan_out=0.75, avg_depth=1.5
+    d = branch_density(evs)
+    assert d["avg_branch_density"] == 0.5  # 0.75 / 1.5
+
+def test_branch_density_empty():
+    d = branch_density([])
+    assert d["avg_branch_density"] == 0.0
+    assert d["max_branch_density"] == 0.0
+
+
+# ── Root spawning rate ──
+
+def test_root_spawning_rate_forest():
+    evs = load_fixture("forest")  # 2 roots across 5 events
+    rate = root_spawning_rate(evs, window_size=5, overlap=0)
+    assert len(rate) >= 1
+    assert rate[0]["root_count"] == 2
+
+def test_root_spawning_rate_chain_single_root():
+    evs = load_fixture("chain")  # 1 root
+    rate = root_spawning_rate(evs, window_size=4, overlap=0)
+    assert rate[0]["root_count"] == 1
+
+def test_root_spawning_rate_empty():
+    assert root_spawning_rate([]) == []
+
+
+# ── Path reuse ratio ──
+
+def test_path_reuse_ratio_chain():
+    evs = load_fixture("chain")  # 4 events, single path
+    r = path_reuse_ratio(evs, max_depth=10)
+    assert r["total_paths"] >= 1
+    # Each unique path is counted once
+    assert r["reuse_ratio"] >= 0.0
+
+def test_path_reuse_ratio_duplicates():
+    """Session with repeated same-tool transitions should have high reuse."""
+    evs = [
+        ToolEvent("Bash", {}, event_id="r"),
+        ToolEvent("Bash", {}, event_id="a", parent_event_id="r"),
+        ToolEvent("Bash", {}, event_id="b", parent_event_id="a"),
+        ToolEvent("Bash", {}, event_id="c", parent_event_id="b"),
+    ]
+    r = path_reuse_ratio(evs, max_depth=10)
+    # All paths are [Bash,Bash], [Bash,Bash,Bash] etc — highly reused
+    assert r["reuse_ratio"] >= 0.5
+
+def test_path_reuse_ratio_empty():
+    r = path_reuse_ratio([])
+    assert r["reuse_ratio"] == 0.0
+    assert r["total_paths"] == 0
     events = [
         ToolEvent("Read", {}, event_id="r1"),
         ToolEvent("Grep", {}, event_id="r2"),

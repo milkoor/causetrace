@@ -4,6 +4,10 @@ Layer 1 — Structural (pure graph/path/topology metrics):
     compute_stats, find_roots, longest_path, fan_out_distribution,
     connected_components
 
+Layer 1.2 — Entropy & density (derived topological measures):
+    transition_entropy, branch_density, root_spawning_rate,
+    path_reuse_ratio
+
 Layer 2 — Pattern (repeated structures, no semantic interpretation):
     detect_repeated_paths, detect_common_transitions,
     detect_fan_in_patterns, detect_branch_collapse
@@ -373,6 +377,138 @@ def connected_components(events) -> List[dict]:
 
     components.sort(key=lambda c: -c["size"])
     return components
+
+
+# ---------------------------------------------------------------------------
+# Layer 1.2 — Entropy & density primitives
+# ---------------------------------------------------------------------------
+
+def transition_entropy(events) -> float:
+    """Shannon entropy of tool-to-tool transition distribution.
+
+    Low entropy = high concentration on few transitions (e.g. Bash→Bash).
+    High entropy = diverse transition patterns.
+    Returns 0.0 for sessions with fewer than 2 transitions.
+    """
+    from math import log2
+
+    if len(events) < 2:
+        return 0.0
+
+    by_id = _by_id(events)
+    counter: Counter = Counter()
+    for ev in events:
+        for parent_id in _parse_parents(ev.parent_event_id):
+            parent = by_id.get(parent_id)
+            if parent:
+                counter[(parent.tool_name, ev.tool_name)] += 1
+
+    total = sum(counter.values())
+    if total == 0:
+        return 0.0
+
+    entropy = 0.0
+    for count in counter.values():
+        p = count / total
+        entropy -= p * log2(p)
+    return round(entropy, 4)
+
+
+def branch_density(events) -> dict:
+    """Branching concentration relative to depth.
+
+    Returns::
+        {"avg_branch_density": float, "max_branch_density": float}
+
+    High density = wide, shallow topology (many branches, low depth).
+    Low density = deep, narrow topology (few branches, high depth).
+    Zero depth yields 0.0 for both metrics.
+    """
+    children, _ = _build_graph_indexes(events)
+    if not events:
+        return {"avg_branch_density": 0.0, "max_branch_density": 0.0}
+
+    fan_outs = [len(children.get(ev.event_id, [])) for ev in events]
+    avg_fan_out = sum(fan_outs) / len(fan_outs)
+    max_fan_out = max(fan_outs)
+
+    root_ids = [
+        ev.event_id for ev in events
+        if not _parse_parents(ev.parent_event_id)
+    ]
+    depths = _depths_from_roots(root_ids, children)
+    avg_depth = sum(depths.values()) / len(depths) if depths else 0.0
+    max_depth = max(depths.values()) if depths else 0.0
+
+    return {
+        "avg_branch_density": round(avg_fan_out / avg_depth, 4) if avg_depth > 0 else 0.0,
+        "max_branch_density": round(max_fan_out / max_depth, 4) if max_depth > 0 else 0.0,
+    }
+
+
+def root_spawning_rate(events, window_size: int = 50, overlap: int = 0) -> List[dict]:
+    """Root emergence counts over temporal windows.
+
+    Applies ``windowed(events, strategy="count", size=window_size, overlap=overlap)``
+    and counts roots in each window. Returns list of dicts::
+
+        {"window": int, "root_count": int, "event_count": int}
+
+    Useful for observing runtime drift — does the agent spawn new independent
+    chains over time or stay concentrated?
+    """
+    results: List[dict] = []
+    for idx, win in enumerate(windowed(events, strategy="count", size=window_size, overlap=overlap)):
+        roots = [ev for ev in win if not _parse_parents(ev.parent_event_id)]
+        results.append({
+            "window": idx,
+            "root_count": len(roots),
+            "event_count": len(win),
+        })
+    return results
+
+
+def path_reuse_ratio(events, max_depth: int = 10) -> dict:
+    """Ratio of repeated tool-name paths across the session.
+
+    Enumerates all simple paths up to ``max_depth`` and computes::
+
+        reuse_ratio = 1 - (unique_paths / total_paths)
+
+    A ratio near 1.0 means the session is dominated by repeated patterns
+    (iterative repair, looping). Near 0.0 means each path is unique
+    (exploration, diverse tasks).
+
+    Returns::
+        {"reuse_ratio": float, "total_paths": int, "unique_paths": int}
+    """
+    if not events:
+        return {"reuse_ratio": 0.0, "total_paths": 0, "unique_paths": 0}
+
+    by_id = _by_id(events)
+    children = _build_child_index(events)
+    pattern_counter: Counter = Counter()
+
+    for start in by_id:
+        stack = [(start, [start])]
+        while stack:
+            node, path = stack.pop()
+            if len(path) >= 2:
+                pattern_counter[tuple(by_id[eid].tool_name for eid in path)] += 1
+            if len(path) >= max_depth:
+                continue
+            for child in children.get(node, []):
+                if child in by_id and child not in path:
+                    stack.append((child, path + [child]))
+
+    total_paths = sum(pattern_counter.values())
+    unique_paths = len(pattern_counter)
+
+    return {
+        "reuse_ratio": round(1.0 - (unique_paths / total_paths), 4) if total_paths > 0 else 0.0,
+        "total_paths": total_paths,
+        "unique_paths": unique_paths,
+    }
 
 
 # ---------------------------------------------------------------------------
