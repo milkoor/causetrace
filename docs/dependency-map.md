@@ -8,8 +8,8 @@
 Zero intra-project dependencies. Foundation layer.
 
 **Exports:** `ToolEvent`, `TraceRecorder`, `JSONStore`, `TimelineRenderer`,
-`ReplayEngine`, `build_tree`, `trace_causal_chain`, `validate_session`,
-`SCHEMA_VERSION`
+`ReplayEngine`, `build_tree`, `compress_tree`, `CompressedRun`,
+`trace_causal_chain`, `validate_session`, `SCHEMA_VERSION`
 
 **Consumed by:** every other module
 
@@ -142,7 +142,7 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | Command | Handler | Module |
 |---------|---------|--------|
 | `timeline` | inline (uses `JSONStore.load`) | core |
-| `tree` | inline (uses `JSONStore.load`) | core |
+| `tree` | inline (uses `JSONStore.load`; `--compress` uses `compress_tree`) | core |
 | `graph` | inline (uses `JSONStore.load`) | core |
 | `sessions` | inline (uses `JSONStore.list_sessions`) | core |
 | `export` | inline (uses `JSONStore.load`) | core |
