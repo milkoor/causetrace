@@ -159,7 +159,8 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `enrich-opencode-sessions` | `list_opencode_sessions()` | hooks/opencode_parser |
 | `enrich-codex` | `enrich_codex_session()` | hooks/codex_parser |
 | `enrich-codex-sessions` | `list_codex_sessions()` | hooks/codex_parser |
-| `validate` | inline (uses `validate_session`) | core |
+| `validate` | inline (uses `validate_session` from core) | core |
+| `validate --all` | inline (uses `list_sessions`, `validate_session`) | core |
 | `stats` | inline (uses `compute_stats`) | analysis |
 | `roots` | inline (uses `find_roots`) | analysis |
 | `critical-path` | inline (uses `longest_path`) | analysis |

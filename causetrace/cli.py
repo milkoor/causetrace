@@ -206,6 +206,7 @@ def cli(argv: list[str] | None = None) -> None:
 
     p_val = sub.add_parser("validate", help="Validate session integrity")
     p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_val.add_argument("--all", action="store_true", help="Validate all stored sessions")
     p_val.add_argument("--fix", action="store_true", help="Fix orphan parent refs (experimental)")
 
     p_st = sub.add_parser("stats", help="Show structural session statistics")
@@ -604,56 +605,61 @@ def cli(argv: list[str] | None = None) -> None:
         print(f"{verb}: {path}")
 
     elif args.command == "validate":
-        sid = _resolve_sid(args.session_id)
-        if not sid:
-            print("No sessions found.")
-            sys.exit(1)
-        path = store._path(sid)
-        if not path.exists():
-            print(f"Session file not found: {path}")
-            sys.exit(1)
-        raw = path.read_text().splitlines()
-        # Parse events manually to count malformed lines before validate_session
-        events = []
-        schema_errors = []
-        for line_number, line in enumerate(raw, start=1):
-            if line.strip():
-                try:
-                    value = json.loads(line)
-                    if not isinstance(value, dict):
-                        raise TypeError("expected a JSON object")
-                    events.append(ToolEvent.from_dict(value))
-                except json.JSONDecodeError:
-                    pass
-                except (AttributeError, KeyError, TypeError) as exc:
-                    schema_errors.append(f"Line {line_number}: invalid event data ({exc})")
-        result = validate_session(events, raw_lines=raw)
-        if schema_errors:
-            result["errors"].extend(schema_errors)
-            result["valid"] = False
-
-        status = "✓" if result["valid"] else "✗"
-        print(f"Session: {sid}  ({result['event_count']} events, {len(raw)} raw lines)\n")
-
-        print(f"  {status} Valid: {result['valid']}")
-        print(f"  Events:     {result['event_count']}")
-        print(f"  Malformed:  {result['malformed_lines']}")
-        print(f"  Orphans:    {result['orphan_count']}")
-        print(f"  Broken refs: {len(result['broken_refs'])}")
-        print(f"  Cycles:     {len(result['cycles'])}")
-
-        if result["warnings"]:
-            print(f"\n  Warnings ({len(result['warnings'])}):")
-            for w in result["warnings"][:10]:
-                print(f"    ⚠ {w}")
-        if result["errors"]:
-            print(f"\n  Errors ({len(result['errors'])}):")
-            for e in result["errors"][:10]:
-                print(f"    ✗ {e}")
-        if result["valid"]:
-            print("\n  ✓ All checks passed.")
+        if args.all:
+            sids = store.list_sessions()
+            if not sids:
+                print("No sessions found.")
+                sys.exit(1)
+            failed = 0
+            for sid in sids:
+                path = store._path(sid)
+                if not path.exists():
+                    print(f"  ✗ {sid}: file not found")
+                    failed += 1
+                    continue
+                raw = path.read_text().splitlines()
+                result = _validate_raw(sid, raw)
+                status = "✓" if result["valid"] else "✗"
+                print(f"  {status} {sid}  ({result['event_count']} events, {len(result['cycles'])} cycles, {len(result['broken_refs'])} broken refs)")
+                if not result["valid"]:
+                    failed += 1
+            print(f"\n{failed}/{len(sids)} sessions failed validation.")
+            if failed:
+                sys.exit(1)
         else:
-            sys.exit(1)
+            sid = _resolve_sid(args.session_id)
+            if not sid:
+                print("No sessions found.")
+                sys.exit(1)
+            path = store._path(sid)
+            if not path.exists():
+                print(f"Session file not found: {path}")
+                sys.exit(1)
+            raw = path.read_text().splitlines()
+            result = _validate_raw(sid, raw)
+
+            status = "✓" if result["valid"] else "✗"
+            print(f"Session: {sid}  ({result['event_count']} events, {len(raw)} raw lines)\n")
+
+            print(f"  {status} Valid: {result['valid']}")
+            print(f"  Events:     {result['event_count']}")
+            print(f"  Malformed:  {result['malformed_lines']}")
+            print(f"  Orphans:    {result['orphan_count']}")
+            print(f"  Broken refs: {len(result['broken_refs'])}")
+            print(f"  Cycles:     {len(result['cycles'])}")
+
+            if result["warnings"]:
+                print(f"\n  Warnings ({len(result['warnings'])}):")
+                for w in result["warnings"][:10]:
+                    print(f"    ⚠ {w}")
+            if result["errors"]:
+                print(f"\n  Errors ({len(result['errors'])}):")
+                for e in result["errors"][:10]:
+                    print(f"    ✗ {e}")
+            if result["valid"]:
+                print("\n  ✓ All checks passed.")
+            else:
+                sys.exit(1)
 
 
 def _session_duration(events) -> str:
@@ -961,8 +967,26 @@ def _handle_compare(store, args) -> None:
         print(f"    {key:25s}  {bar_a:30s} {ca:>4d}  {bar_b:30s} {cb:>4d}{marker}")
 
 
-if __name__ == "__main__":
-    cli()
+def _validate_raw(sid: str, raw: list[str]) -> dict:
+    """Parse and validate raw JSONL lines for a session. Returns validate_session result dict."""
+    events = []
+    schema_errors = []
+    for line_number, line in enumerate(raw, start=1):
+        if line.strip():
+            try:
+                value = json.loads(line)
+                if not isinstance(value, dict):
+                    raise TypeError("expected a JSON object")
+                events.append(ToolEvent.from_dict(value))
+            except json.JSONDecodeError:
+                pass
+            except (AttributeError, KeyError, TypeError) as exc:
+                schema_errors.append(f"Line {line_number}: invalid event data ({exc})")
+    result = validate_session(events, raw_lines=raw)
+    if schema_errors:
+        result["errors"].extend(schema_errors)
+        result["valid"] = False
+    return result
 
 
 def _topology_shape(stats: dict, roots_count: int) -> str:

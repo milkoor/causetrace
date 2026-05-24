@@ -56,6 +56,7 @@ causetrace critical-path [session]        # Longest root-to-leaf causal chain
 causetrace patterns [session]             # Repeated tool patterns & transitions
 causetrace patterns [session] --csv       # Causal transitions as CSV
 causetrace validate [session]             # Check JSONL/references/cycles
+causetrace validate --all                 # Validate all stored sessions
 causetrace annotate <session> [...]       # Store sidecar metadata
 causetrace compare <a> <b>                # Compare session topology
 causetrace demo                            # Create an inspectable sample trace
@@ -149,7 +150,7 @@ python3 tools/promote.py devto-post docs/promotion/blog_<topic>.md
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **causetrace** (1697 symbols, 2856 relationships, 106 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **causetrace** (1731 symbols, 2940 relationships, 110 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
