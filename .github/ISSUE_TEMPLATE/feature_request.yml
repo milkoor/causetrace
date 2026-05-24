@@ -17,6 +17,12 @@ body:
       label: Proposed change
       description: How would you like causetrace to behave?
 
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Trace evidence
+      description: Describe a sanitized real trace or workflow demonstrating the need for this change.
+
   - type: checkboxes
     id: runtime-impact
     attributes:

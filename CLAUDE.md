@@ -18,7 +18,7 @@ Use it to assess change impact before modifying any file.
 pip install -e .
 
 # Run all tests
-python -m pytest tests/test_invariants.py -v
+python -m pytest tests/ -v
 
 # Run a single test
 python -m pytest tests/test_invariants.py::test_causality_chain_links -v
@@ -32,6 +32,7 @@ python demo/run_demo.py
 ```bash
 causetrace timeline [session_id]    # Flat chronological view
 causetrace tree [session_id]        # Causal parent→child tree
+causetrace tree [session_id] --quality  # Tree with causal quality report
 causetrace graph [session_id]       # Multi-parent DAG (fan-in)
 causetrace sessions                 # List recorded sessions
 causetrace export <session_id>      # Export as JSON
@@ -46,13 +47,17 @@ causetrace enrich-codex <id> [--save]     # Enrich from Codex CLI rollout sessio
 causetrace opencode [--save]              # Scan OpenCode logs
 causetrace aider [--save] -- [args]       # Run aider with tracing
 causetrace continue [--save]              # Scan Continue.dev logs
-causetrace codex [--save]                 # Scan OpenAI Codex CLI logs
+causetrace codex [--save]                 # Legacy scan path; prefer enrich-codex
 causetrace copilot [--save]               # Scan GitHub Copilot agent logs
 causetrace doctor                         # Diagnose agent configuration and data sources
 causetrace stats [session]                # Structural session statistics
 causetrace roots [session]                # Root events with downstream metrics
 causetrace critical-path [session]        # Longest root-to-leaf causal chain
 causetrace patterns [session]             # Repeated tool patterns & transitions
+causetrace patterns [session] --csv       # Causal transitions as CSV
+causetrace validate [session]             # Check JSONL/references/cycles
+causetrace annotate <session> [...]       # Store sidecar metadata
+causetrace compare <a> <b>                # Compare session topology
 ```
 
 ## Architecture
@@ -60,7 +65,7 @@ causetrace patterns [session]             # Repeated tool patterns & transitions
 - **`causetrace/core.py`** — Core data model (`ToolEvent`), causal linking (`TraceRecorder`), append-only JSONL storage (`JSONStore`), tree/DAG builders, renderers, `ReplayEngine`.
 - **`causetrace/analysis.py`** — Session analysis primitives (structural + pattern). Layer 1: graph/path/topology metrics (compute_stats, find_roots, longest_path). Layer 2: structural patterns without semantic naming (detect_repeated_paths, detect_common_transitions, detect_fan_in_patterns, detect_branch_collapse).
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
-- **`causetrace/cli.py`** — argparse-based CLI dispatching to 19 subcommands.
+- **`causetrace/cli.py`** — argparse-based CLI dispatching capture, analysis, annotation, and diagnostic commands.
 - **`causetrace/hooks/`** — Agent-specific bridges and tailers:
   - `claude_code.py` — Claude Code PreToolUse/PostToolUse hook bridge
   - `claude_project_parser.py` — Claude Code project session parser (enrich)
@@ -74,6 +79,7 @@ causetrace patterns [session]             # Repeated tool patterns & transitions
 - **`tests/test_invariants.py`** — Tests runtime invariants (serialization roundtrip, causality acyclicity, append-only integrity, renderer stability), not business logic.
 - **`tests/test_enrich.py`** — Tests for Claude Code project session parser.
 - **`tests/test_opencode_enrich.py`** — Tests for OpenCode DB session parser.
+- **`tests/test_dag_fixtures.py`** — Topology fixtures and session-local analysis regression tests.
 
 ## Runtime principles
 
@@ -128,6 +134,7 @@ python3 tools/promote.py devto-post docs/promotion/blog_<topic>.md
 
 - **Schema evolution** is tracked reactively in `docs/schema/` (INDEX.md for evolution log, SCHEMA.md for field definitions, pressure-log.md for trace data that strains the current model).
 - **Multi-parent causality** uses comma-separated `parent_event_id` (e.g. `"root_a,root_b"` ) for fan-in DAGs. `_parse_parents()` splits on comma.
+- **Session-local analysis** retains only parent edges whose IDs are in the loaded session; a child of an external parent is a local root for `stats`, `roots`, and `critical-path`.
 - **Storage** is append-only JSONL files at `~/.causetrace/data/<session_id>.jsonl`. No DB dependency.
 - **Dependency map** at `docs/dependency-map.md` — check before modifying any module to assess change impact.
 - **Heuristic causality** (`infer_relations()` in `causality.py`) is an explicit fallback for log-based agents, clearly documented as lower fidelity.
@@ -136,24 +143,24 @@ python3 tools/promote.py devto-post docs/promotion/blog_<topic>.md
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **causetrace** (1435 symbols, 2314 relationships, 93 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **causetrace** (1543 symbols, 2608 relationships, 97 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run the GitNexus `impact` tool with `direction: "upstream"` and review direct callers, affected processes, and risk level.
+- **MUST inspect `git diff --stat` and run relevant tests before committing** to verify changes only affect expected files and behavior.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- When exploring unfamiliar code, use the GitNexus `query` tool to find execution flows. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use the GitNexus `context` tool.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER edit a function, class, or method without first running the GitNexus `impact` tool on it.
 - NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER rename symbols without reviewing callers and references through `context`/`impact`.
+- NEVER commit changes without inspecting the staged diff and running relevant validation.
 
 ## Resources
 

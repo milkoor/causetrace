@@ -1,11 +1,23 @@
 # causetrace
 
-> [English](README.md)
+> [English](README.md) • [贡献指南](CONTRIBUTING.md) • [安全报告](SECURITY.md)
 
-**causetrace** 捕获 coding agents（Claude Code、OpenCode、Aider、Continue.dev、Codex CLI、GitHub Copilot）的工具调用，并将其链接成因树与 DAG —— **而非扁平的时序线**。每个事件都记录了"为什么会发生"，支持回放、根因分析和行为解释。
+**causetrace** 是面向 AI coding agents 的 Python tracing 与
+observability 工具，支持 Claude Code、Codex CLI、OpenCode、Aider、
+Continue.dev 和 GitHub Copilot。它捕获工具调用并链接成因果树与 DAG，
+用于 agent 调试、回放、根因分析和行为解释，而非仅展示扁平时序线。
 
-> **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / Codex CLI / GitHub Copilot（日志监听）、Aider（进程包装）  
+> **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / GitHub Copilot（日志监听）、Codex CLI（rollout 解析）、Aider（进程包装）
 > **存储**: `~/.causetrace/data/<session_id>.jsonl` — 追加写入 JSONL，零外部依赖
+
+---
+
+## 使用场景
+
+- 追踪 AI coding agent 为什么进行了某次编辑或 shell 调用。
+- 基于因果上下文调试 Claude Code hooks 与 Codex CLI rollout 会话。
+- 按拓扑、工具转移和关键路径比较不同 agent 会话。
+- 为 agent observability 研究收集已脱敏的运行时 trace。
 
 ---
 
@@ -90,7 +102,7 @@ $ causetrace graph ses_3e23bcc8
 
 ```bash
 # Claude Code — Hook 自动记录
-causetrace tale <session_id>
+causetrace tree <session_id>
 
 # Claude Code — 从 project 会话提取 reasoning 块
 causetrace enrich-sessions
@@ -107,7 +119,6 @@ causetrace enrich-codex <session_id> --save
 # 基于日志的 Agent — 扫描并保存（启发式因果推断）
 causetrace opencode --save
 causetrace continue --save
-causetrace codex --save
 causetrace copilot --save
 
 # Aider — 带追踪运行
@@ -120,7 +131,8 @@ causetrace aider -- --model gpt-4 --yes "修复这个bug"
 - **Aider** — `causetrace aider --save -- [aider 参数]` 包装 CLI；从输出尽力解析
 - **Codex CLI (enrich)** — 解析真实 rollout 格式：`function_call`/`function_call_output` 通过 `call_id` 配对
 - **OpenCode (enrich)** — 从 SQLite DB 提取 reasoning + 工具调用，带因果父子链接
-- **Continue.dev**、**Codex CLI (scan)**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
+- **Continue.dev**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
+- **Codex CLI (`codex`)** — 为兼容保留的旧扫描路径；已验证的 rollout 导入请使用 `enrich-codex`
 - 所有基于日志的 Agent 采用启发式因果推断 —— 事件间的时间戳决定父子链
 
 ---
@@ -166,6 +178,22 @@ causetrace opencode --save
 
 解析 OpenCode 日志文件，从时间邻近性推断因果关系，并保存为 causetrace 会话。
 
+### 分析与校验会话
+
+```bash
+causetrace validate <session_id>                 # 完整性与损坏 JSONL 校验
+causetrace stats <session_id>                    # 拓扑汇总
+causetrace roots <session_id>                    # 局部根节点与下游深度
+causetrace critical-path <session_id>            # 最长局部因果链
+causetrace patterns <session_id> --json          # 结构化模式输出
+causetrace patterns <session_id> --csv           # 转移关系 CSV
+causetrace annotate <session_id> --task-type bug_fix --success
+causetrace compare <session_a> <session_b>
+```
+
+结构分析以当前加载的会话为边界：若父 ID 不在本会话内，其子事件会作为
+局部根节点参与分析。`validate` 仍会将非 `root_` 的缺失父引用报告为警告。
+
 ---
 
 ## 数据模型
@@ -175,7 +203,7 @@ causetrace opencode --save
 | 字段 | 说明 |
 |------|------|
 | `event_id` | UUID |
-| `parent_event_id` | 因果父节点（逗号分隔支持扇入） |
+| `parent_event_id` | 因果父节点（逗号分隔支持扇入，也可引用外部边界） |
 | `session_id` | 所属会话 |
 | `tool_name` | 例如 `Bash`、`Read`、`Write` |
 | `tool_input` | 序列化的输入参数 |
@@ -207,8 +235,15 @@ causetrace opencode --save
 | `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
 | `causetrace aider [--save] -- [args]` | 带追踪运行 Aider |
 | `causetrace continue [--save]` | 扫描 Continue.dev 日志 |
-| `causetrace codex [--save]` | 扫描 OpenAI Codex CLI 日志 |
+| `causetrace codex [--save]` | 旧版 Codex 扫描路径；优先使用 `enrich-codex` |
 | `causetrace copilot [--save]` | 扫描 GitHub Copilot agent 日志 |
+| `causetrace validate [<id>]` | 校验 JSONL、父引用和循环 |
+| `causetrace stats [<id>]` | 展示拓扑统计 |
+| `causetrace roots [<id>]` | 展示局部根节点及下游指标 |
+| `causetrace critical-path [<id>]` | 展示最长局部因果链 |
+| `causetrace patterns [<id>] [--json\|--csv]` | 分析因果路径和转移；CSV 输出转移表 |
+| `causetrace annotate <id> [...]` | 保存任务/来源/结果侧车元数据 |
+| `causetrace compare <a> <b>` | 对比两个会话的拓扑和转移 |
 | `causetrace doctor` | 诊断 Agent 配置和数据源状态 |
 
 ---
@@ -243,8 +278,10 @@ causetrace opencode --save
 | 模块 | 职责 |
 |------|------|
 | `causetrace/core.py` | 数据模型、`TraceRecorder`、`JSONStore`、树/DAG 构建、渲染器、`ReplayEngine` |
+| `causetrace/analysis.py` | 会话内拓扑、关键路径、窗口和因果模式分析 |
+| `causetrace/annotation.py` | 用于标注和比较流程的侧车元数据 |
 | `causetrace/causality.py` | 非结构化日志的时间因果推断 |
-| `causetrace/cli.py` | argparse CLI，12 个子命令 |
+| `causetrace/cli.py` | argparse CLI，涵盖采集、分析、标注和诊断命令 |
 | `causetrace/hooks/` | 各 Agent 的桥接与监听器 |
 | `causetrace/hooks/claude_code.py` | Claude Code hook 桥接 |
 | `causetrace/hooks/claude_project_parser.py` | Claude Code project 会话解析器 |
@@ -263,7 +300,7 @@ causetrace opencode --save
 ```bash
 git clone https://github.com/milkoor/causetrace.git
 cd causetrace
-pip install -e .
+pip install -e ".[test]"
 python -m pytest tests/ -v
 ```
 

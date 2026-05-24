@@ -18,7 +18,7 @@ Formal field definitions for the causetrace data model. Version: v0.1.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `parent_event_id` | `str` or `null` | optional | Causal parent `event_id`. Comma-separated for multi-parent (fan-in) DAGs |
+| `parent_event_id` | `str` or `null` | optional | Causal parent `event_id`. Comma-separated for multi-parent (fan-in) DAGs; retained when the parent is outside a partial session |
 | `session_id` | `str` or `null` | optional | Owning session scope |
 | `event_type` | `str` | optional, defaults to `"tool_call"` | `"tool_call"` \| `"reasoning"` \| `"context_update"` \| `"user_input"` |
 | `caused_by` | `str` or `null` | optional | Semantic tag: `"user"` \| `"reasoning"` \| `event_id` \| freeform label |
@@ -35,13 +35,21 @@ Formal field definitions for the causetrace data model. Version: v0.1.
 
 - `tool_input` and `tool_output` are JSON-serialized. String values are truncated at 2000 characters during serialization (`_safe_serialize` in `core.py`).
 - Fields with `null`/empty values are omitted on serialization (keep payload compact).
-- Multi-parent: `parent_event_id` uses comma as separator (e.g. `"evt_a,evt_b"`). Parsed by `_parse_parents()` in `core.py`.
+- Multi-parent: `parent_event_id` uses comma as separator (e.g. `"evt_a,evt_b"`). Parsed for integrity in `core.py` and for local graph analysis in `analysis.py`.
 
 ## Schema Invariants
 
 1. Append-only: events are never mutated after storage. Each event is a single JSON line.
-2. No orphan references: `parent_event_id(s)` should reference existing `event_id`s within the same session (enforced by test `test_causality_no_orphan_references`).
+2. Reference integrity: full captured sessions should resolve parent IDs locally; imported or sliced sessions may retain external parents. `validate` warns for missing non-`root_` parents.
 3. Event order: loaded events are sorted by `timestamp` for deterministic rendering.
+
+## Local Analysis Boundary
+
+`stats`, `roots`, `critical-path`, `patterns`, and `compare` analyze only
+edges whose parent and child exist in the loaded session. An event whose
+parents are all external is a local root. This rule prevents external IDs from
+appearing as synthetic connected-component nodes and keeps partial sessions
+usable without mutating stored provenance.
 
 ## Schema Policy
 

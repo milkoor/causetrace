@@ -11,6 +11,7 @@
 
 ```
 ToolEvent:
+  schema_version     str         # "0.1"
   event_id          str         # uuid
   tool_name         str         # "Bash", "Read", "Write", "Edit", etc.
   tool_input        dict|str    # serialized input arguments
@@ -22,6 +23,9 @@ ToolEvent:
   session_id        str|null    # owning session
   event_type        str         # "tool_call" | "reasoning" | "context_update" | "user_input"
   caused_by         str|null    # "user" | "reasoning" | event_id | semantic tag
+  model             str|null    # model attribution
+  provider          str|null    # runtime provider
+  agent             str|null    # agent attribution
 ```
 
 ## Evolution Entries
@@ -67,6 +71,23 @@ maintainability issue as causal queries grow more sophisticated.
 - `parent_event_ids: List[str]` — formalize multi-parent as a list
 - `causal_type: "structural" | "semantic" | "user" | "heuristic"`
 - `semantic_intent: Optional[str]` — the human/semantic label
+
+---
+
+### 2026-05-24: Clarified Partial-Session Parent Semantics (no schema change)
+
+**Trigger**: Session slices and imported traces may retain `parent_event_id`
+values whose parent event is outside the loaded JSONL.
+
+**Decision**:
+- Raw `parent_event_id` values remain unchanged.
+- Analysis commands construct topology only from parent IDs found in the
+  loaded session; boundary children are local roots.
+- `validate` reports missing non-`root_` references as warnings while malformed
+  JSON or cycles remain invalid.
+
+**Rationale**: Partial traces remain analyzable without pretending external
+events are part of the local graph or discarding provenance.
 
 ---
 

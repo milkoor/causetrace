@@ -5,6 +5,8 @@
 Before contributing, read [docs/runtime-principles.md](docs/runtime-principles.md).
 The project prioritizes causal fidelity over feature breadth. A PR that compromises
 runtime semantics will be rejected regardless of functionality.
+Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report
+vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## What we need
 
@@ -45,9 +47,13 @@ These belong in separate projects.
 ```bash
 git clone https://github.com/milkoor/causetrace.git
 cd causetrace
-pip install -e .
+pip install -e ".[test]"
 python -m pytest tests/ -v
 ```
+
+Changes to causal topology or analysis must add focused coverage in
+`tests/test_dag_fixtures.py`; storage, serialization, validation, and CLI
+contracts belong in `tests/test_invariants.py`.
 
 ## Publishing to PyPI
 
@@ -57,8 +63,9 @@ Maintainer only. To publish a new version:
 2. Tag the release: `git tag v<version> && git push origin --tags`
 3. The [publish workflow](.github/workflows/publish.yml) will build and upload automatically
 
-Requirements: a PyPI API token must be configured as a repository secret named `PYPI_API_TOKEN`.
-Create one at https://pypi.org/manage/account/token/
+The workflow uses PyPI Trusted Publishing through GitHub Actions OIDC
+(`id-token: write`). Configure the `milkoor/causetrace` project as a trusted
+publisher on PyPI; no repository API token is used by the workflow.
 
 To publish manually:
 ```bash

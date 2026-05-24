@@ -1,0 +1,41 @@
+I've been building tracing hooks for coding agents (Claude Code, Codex CLI, Copilot) to understand what they actually do during a session.
+
+What I found: these agents don't produce meaningful flat timelines. They produce causal DAGs.
+
+A typical Claude Code session rendered chronologically:
+
+  [03:13:37] Read(file_path=src/main.py)
+  [03:13:37] Grep(pattern=FIXME)
+  [03:13:37] Read(file_path=src/utils.py)
+  [03:13:37] Read(file_path=src/utils.py)
+  [03:13:38] Edit(file_path=src/utils.py)
+  [03:13:38] Bash(pytest -x)
+  [03:13:38] Grep(pattern=counter)
+  [03:13:38] Edit(file_path=docs/api.md)
+  [03:13:38] Bash(pytest)
+
+Two Read(src/utils.py) in a row — was it a repeat? Different context? Flat timelines give you questions, not answers.
+
+But each tool call is a directed response to a prior result. The agent reads a file, finds a FIXME, looks up supporting code, edits, verifies.
+
+Reconstruct the parent-child relationships, the same session becomes:
+
+  [03:13:37] Read(file_path=src/main.py)
+      └─ Grep(pattern=FIXME)
+        └─ Read(file_path=src/utils.py)
+  [03:13:37] Read(file_path=src/utils.py)  ← root (user requested context)
+      └─ Edit(file_path=src/utils.py)
+        └─ Bash(pytest -x)
+  [03:13:38] Grep(pattern=counter)
+      └─ Edit(file_path=docs/api.md)
+        └─ Bash(pytest)
+
+Three independent causal trees, each with a clear "why." Flat logs assume events are independent. Agent tool calls are structurally dependent: every Read is because of a prior Edit, every Bash is because of a prior Read.
+
+This isn't a nicer visualization. It's a different abstraction.
+
+Observability tooling for agents treats tool calls as independent log lines. But these events are edges in a directed graph. Recording parent_event_id per call — what caused this call — transforms flat logs into a tree you can trace backward from any leaf.
+
+The Codex CLI rabbit hole: the documented format (protocol.rs) suggests exec_command_begin/end events. The real rollout JSONL uses response_item/function_call paired by call_id. They don't match. Source of truth is the wire format, not source comments.
+
+Would love to hear from anyone who's debugged agent behavior from flat logs and hit cases where the flat representation actively hid the bug.

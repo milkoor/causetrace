@@ -47,6 +47,13 @@ Runtime IR (causal graph, schema, storage, query) is physically separate from
 derived intelligence (analysis, prediction, summarization). The core has zero
 dependency on AI inference.
 
+### 9. Explicit analysis boundaries
+
+Derived topology is scoped to the loaded session or window. Parent references
+outside that scope remain source evidence, but they are not synthesized into
+local nodes; their children are local roots. This keeps metrics consumable for
+partial traces without rewriting stored history.
+
 ---
 
 ## Application

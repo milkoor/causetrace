@@ -22,8 +22,21 @@ body:
     id: trace
     attributes:
       label: Trace output
-      description: Paste the relevant causetrace output or error
+      description: Paste sanitized causetrace output or the error. Remove credentials, prompts, private paths, and tool output before submitting.
       render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Causetrace version
+      description: Output of `python -m pip show causetrace` or the commit SHA.
+      placeholder: e.g. 0.1.2 or 0bb39ce
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the command used and the minimum trace shape needed to reproduce the issue.
 
   - type: textarea
     id: schema

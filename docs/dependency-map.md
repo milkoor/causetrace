@@ -42,7 +42,12 @@ Zero intra-project dependencies. Operates on ToolEvent interfaces via duck-typin
 
 | Consumer | What it uses |
 |----------|-------------|
-| `cli.py` | All 9 exports |
+| `cli.py` | `compute_stats`, `find_roots`, `longest_path`, `detect_repeated_paths`, `detect_common_transitions`, `detect_fan_in_patterns` |
+| `tests/test_dag_fixtures.py` | Public primitives and DAG boundary behavior |
+
+**Boundary rule:** topology functions build edges only between events present in
+the loaded session. A parent reference outside the loaded session is retained
+in raw data but its child is a local analysis root.
 
 ## Layer 1.6: Annotation (`causetrace/annotation.py`)
 
@@ -94,9 +99,10 @@ Zero intra-project dependencies. Sidecar JSON metadata store for session task la
 - **Depends on:** `core.ToolEvent`, `core.TraceRecorder`, `causality.infer_relations`
 - **Used by:** `cli.py` → `opencode`
 
-### `hooks/codex_tailer.py` (legacy, known broken)
+### `hooks/codex_tailer.py` (legacy)
 - **Depends on:** `core.ToolEvent`, `core.TraceRecorder`, `causality.infer_relations`
 - **Used by:** `cli.py` → `codex`
+- **Note:** validated rollout ingestion uses `codex_parser.py` via `enrich-codex`
 
 ### `hooks/continue_tailer.py`
 - **Depends on:** `core.ToolEvent`, `core.TraceRecorder`, `causality.infer_relations`
@@ -114,7 +120,7 @@ Zero intra-project dependencies. Sidecar JSON metadata store for session task la
 
 The CLI is the **single integration point** — it wires all hooks/parsers to user-facing commands.
 
-**Depends on:** `core` (5 exports), all 9 hook modules, `pathlib.Path`
+**Depends on:** `core`, `analysis`, `annotation`, `causality`, all hook/parser modules, `pathlib.Path`
 
 **Subcommands and their dispatch:**
 
@@ -139,6 +145,12 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `enrich-codex` | `enrich_codex_session()` | hooks/codex_parser |
 | `enrich-codex-sessions` | `list_codex_sessions()` | hooks/codex_parser |
 | `validate` | inline (uses `validate_session`) | core |
+| `stats` | inline (uses `compute_stats`) | analysis |
+| `roots` | inline (uses `find_roots`) | analysis |
+| `critical-path` | inline (uses `longest_path`) | analysis |
+| `patterns` | inline (uses pattern detectors; JSON/CSV output) | analysis |
+| `annotate` | `_handle_annotate()` | annotation |
+| `compare` | `_handle_compare()` | analysis, annotation |
 | `doctor` | `_run_doctor()` | cli (inline) |
 
 ## Layer 5: Tests
@@ -149,12 +161,14 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `tests/test_hooks_integration.py` | `core.ToolEvent`, `core.JSONStore`, `core.build_tree` |
 | `tests/test_enrich.py` | `hooks/claude_project_parser` (4 internals + list_sessions, parse_session) |
 | `tests/test_opencode_enrich.py` | `hooks/opencode_parser` (4 internals + list_sessions, parse_session) |
+| `tests/test_dag_fixtures.py` | `analysis` primitives, `core.validate_session`, fixture DAGs |
 
 ## Layer 6: Tools
 
 | Tool | Depends on |
 |------|-----------|
 | `tools/codex_deepseek_proxy.py` | `httpx` (external), no causetrace deps |
+| `tools/promote.py` | `httpx` only for the `devto-post` command |
 | `demo/run_demo.py` | `core.TraceRecorder` |
 
 ---
@@ -164,6 +178,8 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 ```
 core.py change          → EVERYTHING (all hooks, CLI, tests)
 causality.py change     → all 4 legacy tailers
+analysis.py change      → stats/roots/critical-path/patterns/compare + DAG tests
+annotation.py change    → annotate/compare commands
 parser change           → cli.py + its specific command + its specific test file
 tailer change           → cli.py + its specific command + its tests
 cli.py change           → no modules depend on it (it's the sink)
@@ -186,3 +202,9 @@ __init__.py change      → external consumers (pip installers)
 
 1. Run all 4 tailers that use `infer_relations`
 2. Verify `test_invariants.py` still passes
+
+### When modifying `analysis.py`:
+
+1. Run `python -m pytest tests/test_dag_fixtures.py -v`
+2. Check session-local external-parent behavior and cycle boundedness
+3. Exercise output contracts for `patterns --json` and `patterns --csv`

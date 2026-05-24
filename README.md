@@ -1,11 +1,24 @@
 # causetrace
 
-> [中文](README.zh-CN.md) • [CI](https://github.com/milkoor/causetrace/actions) • [PyPI](https://pypi.org/project/causetrace/)
+> [中文](README.zh-CN.md) • [CI](https://github.com/milkoor/causetrace/actions) • [PyPI](https://pypi.org/project/causetrace/) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
 
-**causetrace** captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs — **not flat timelines**. Every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
+**causetrace** is a Python tracing and observability tool for AI coding agents
+such as Claude Code, Codex CLI, OpenCode, Aider, Continue.dev, and GitHub
+Copilot. It captures tool calls and links them into causal trees and DAGs,
+enabling agent debugging, replay, root-cause analysis, and behavior
+explanation instead of relying on flat timelines.
 
-> **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / Codex CLI / GitHub Copilot (log tailing), Aider (process wrapper)  
+> **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / GitHub Copilot (log tailing), Codex CLI (rollout parser), Aider (process wrapper)
 > **Storage**: `~/.causetrace/data/<session_id>.jsonl` — append-only JSONL, zero external dependencies
+
+---
+
+## Use Cases
+
+- Trace why an AI coding agent made a specific edit or shell call.
+- Debug Claude Code hooks and Codex CLI rollout sessions from causal context.
+- Compare agent sessions by topology, transitions, and critical paths.
+- Collect sanitized runtime traces for agent observability research.
 
 ---
 
@@ -90,7 +103,7 @@ Fan-in DAGs visualize convergent causation — one tool consuming multiple prior
 
 ```bash
 # Claude Code — automatic via hooks
-causetrace tale <session_id>
+causetrace tree <session_id>
 
 # Claude Code — enrich project sessions with reasoning blocks
 causetrace enrich-sessions
@@ -107,7 +120,6 @@ causetrace enrich-codex <session_id> --save
 # Log-based agents — scan and save (heuristic causality)
 causetrace opencode --save
 causetrace continue --save
-causetrace codex --save
 causetrace copilot --save
 
 # Aider — run with tracing
@@ -119,7 +131,8 @@ Usage notes:
 - **Aider** — `causetrace aider --save -- [aider args]` wraps the CLI; best-effort parsing from output
 - **Codex CLI (enrich)** — parses real rollout format: `function_call`/`function_call_output` paired by `call_id`, `agent_message` for reasoning
 - **OpenCode (enrich)** — extracts reasoning + tool calls from SQLite DB with causal parent-child links
-- **Continue.dev**, **Codex CLI (scan)**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
+- **Continue.dev**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
+- **Codex CLI (`codex`)** — legacy scanner retained for compatibility; use `enrich-codex` for validated rollout ingestion
 - All log-based agents infer causality heuristically — timestamps between events determine parent→child chains
 
 ---
@@ -165,6 +178,23 @@ causetrace opencode --save
 
 Parses OpenCode log files, infers causal relations from temporal proximity, and saves as a causetrace session.
 
+### Analyze and validate sessions
+
+```bash
+causetrace validate <session_id>                 # Integrity and malformed JSONL checks
+causetrace stats <session_id>                    # Topology summary
+causetrace roots <session_id>                    # Local roots and downstream depth
+causetrace critical-path <session_id>            # Longest local causal chain
+causetrace patterns <session_id> --json          # Structured path/transition/fan-in output
+causetrace patterns <session_id> --csv           # Transitions CSV
+causetrace annotate <session_id> --task-type bug_fix --success
+causetrace compare <session_a> <session_b>
+```
+
+Structural analysis is session-local: a parent ID not present in the loaded
+session marks a local boundary, so its child is analyzed as a local root.
+`validate` still reports missing non-`root_` parent references as warnings.
+
 ---
 
 ## Data Model
@@ -174,7 +204,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | Field | Description |
 |-------|-------------|
 | `event_id` | UUID |
-| `parent_event_id` | Causal parent (comma-separated for fan-in) |
+| `parent_event_id` | Causal parent (comma-separated for fan-in; may reference an external boundary) |
 | `session_id` | Owning session |
 | `tool_name` | e.g. `Bash`, `Read`, `Write` |
 | `tool_input` | Serialized input arguments |
@@ -206,8 +236,15 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace opencode [--save]` | Scan OpenCode logs |
 | `causetrace aider [--save] -- [args]` | Run aider with tracing |
 | `causetrace continue [--save]` | Scan Continue.dev logs |
-| `causetrace codex [--save]` | Scan OpenAI Codex CLI logs |
+| `causetrace codex [--save]` | Legacy Codex scan path; prefer `enrich-codex` |
 | `causetrace copilot [--save]` | Scan GitHub Copilot agent logs |
+| `causetrace validate [<id>]` | Validate JSONL integrity, references, and cycles |
+| `causetrace stats [<id>]` | Show structural topology statistics |
+| `causetrace roots [<id>]` | Show local roots and downstream metrics |
+| `causetrace critical-path [<id>]` | Show longest local root-to-leaf chain |
+| `causetrace patterns [<id>] [--json\|--csv]` | Show causal paths and transitions; CSV exports transitions |
+| `causetrace annotate <id> [...]` | Store sidecar task/source/result metadata |
+| `causetrace compare <a> <b>` | Compare topology and transitions across sessions |
 | `causetrace doctor` | Diagnose agent configuration and data sources |
 
 ---
@@ -242,8 +279,10 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | Module | Responsibility |
 |--------|---------------|
 | `causetrace/core.py` | Data model, `TraceRecorder`, `JSONStore`, tree/DAG builders, renderers, `ReplayEngine` |
+| `causetrace/analysis.py` | Session-local topology, critical paths, windows, and causal patterns |
+| `causetrace/annotation.py` | Sidecar metadata for task labels and comparison workflows |
 | `causetrace/causality.py` | Temporal causal inference for unstructured logs |
-| `causetrace/cli.py` | argparse CLI dispatching to 12 subcommands |
+| `causetrace/cli.py` | argparse CLI dispatching capture, analysis, annotation, and diagnostic commands |
 | `causetrace/hooks/` | Agent-specific bridges and tailers |
 | `causetrace/hooks/claude_code.py` | Claude Code hook bridge |
 | `causetrace/hooks/claude_project_parser.py` | Claude Code project session parser |
@@ -262,7 +301,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 ```bash
 git clone https://github.com/milkoor/causetrace.git
 cd causetrace
-pip install -e .
+pip install -e ".[test]"
 python -m pytest tests/ -v
 ```
 

@@ -28,3 +28,7 @@ Each note should be a single markdown file with a date prefix:
 - **Replay failures** — why a trace didn't replay faithfully
 - **Pattern mismatches** — expected causal patterns vs. observed ones
 - **Agent-specific behavior** — quirks of particular runtimes
+
+Validated pattern observations belong in `docs/research/patterns/`. When an
+analysis implementation changes a metric definition, annotate existing
+observations rather than silently rewriting historical results.

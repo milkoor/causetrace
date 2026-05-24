@@ -156,3 +156,22 @@ Two new runtime formats were discovered that don't fit the original action/obser
 No schema change for v0.1.2. The current ToolEvent fields are expressive enough for
 causal chain construction. The pairing gap is noted for v0.2 if cross-referencing
 becomes a priority.
+
+---
+
+## Pressure #004
+
+**Date**: 2026-05-24
+**Context**: Partial sessions and windowed analysis
+
+### Problem
+
+A trace fragment may begin with an event whose `parent_event_id` belongs to an
+earlier fragment or external root. Treating that ID as a local graph node made
+`stats`, `critical-path`, and connected components misleading.
+
+### Action
+
+No schema change. Stored references retain provenance, while analysis now
+builds edges only from IDs present in the loaded session. Boundary children
+are local roots; missing non-`root_` references remain validation warnings.
