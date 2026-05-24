@@ -35,12 +35,10 @@ For any task involving code understanding, debugging, impact analysis, or refact
 | `query`          | Process-grouped code intelligence — execution flows related to a concept |
 | `context`        | 360-degree symbol view — categorized refs, processes it participates in  |
 | `impact`         | Symbol blast radius — what breaks at depth 1/2/3 with confidence         |
+| `detect_changes` | Git-diff impact — what do your current changes affect                    |
+| `rename`         | Multi-file coordinated rename with confidence-tagged edits               |
 | `cypher`         | Raw graph queries (read `gitnexus://repo/{name}/schema` first)           |
 | `list_repos`     | Discover indexed repos                                                   |
-| `tool_map`       | Map MCP/RPC tools to handler definitions                                  |
-
-For changed-file verification or refactors, inspect `git diff`, use `impact`
-on affected symbols, edit normally, and run the relevant test suite.
 
 ## Resources Reference
 

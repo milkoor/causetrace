@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from causetrace.core import ToolEvent, validate_session
+from causetrace.invariants import check_invariants
 from causetrace.analysis import (
     compute_stats, find_roots, longest_path, connected_components,
     detect_common_transitions, detect_fan_in_patterns, detect_repeated_paths,
@@ -362,6 +363,55 @@ def test_external_parent_reference_becomes_local_root():
 
 
 def test_fan_in_parent_tools_are_tool_names():
+    events = [
+        ToolEvent("Read", {}, event_id="r1"),
+        ToolEvent("Grep", {}, event_id="r2"),
+        ToolEvent("Edit", {}, event_id="m", parent_event_id="r1,r2"),
+    ]
+    patterns = detect_fan_in_patterns(events)
+    assert patterns[0]["parent_tools"] == ["Read", "Grep"]
+
+
+# ── Invariant battery (parametrized over fixtures) ──
+
+INVARIANT_FIXTURES = [
+    ("chain",          True),   # acyclic valid
+    ("fan-in",         True),
+    ("deep-merge",     True),
+    ("diamond",        True),
+    ("forest",         True),
+    ("deep-chain",     True),
+    ("fork",           True),
+    ("timed-fan-in",   True),
+    ("cycle",          False),  # cycle corruption
+    ("multi-parent-cycle", False),
+]
+
+
+@pytest.mark.parametrize("name,expect_valid", INVARIANT_FIXTURES)
+def test_invariant_battery(name, expect_valid):
+    """All fixtures pass through the full invariant checker battery."""
+    events = load_fixture(name)
+    result = check_invariants(events)
+
+    # If fixture has no unique-id violation, assert it
+    if result["checks"]["unique_ids"]["violations"]:
+        pytest.fail(f"{name}: duplicate event_ids")
+
+    # Cycle check
+    if expect_valid:
+        if not result["valid"]:
+            details = "; ".join(
+                f"{k}: {v['violations'][:3]}"
+                for k, v in result["checks"].items()
+                if v["violations"]
+            )
+            pytest.fail(f"{name}: expected valid, got violations: {details}")
+    else:
+        # Known-corrupt fixtures — must have cycle violations
+        cycle_vios = result["checks"]["acyclicity"]["violations"]
+        assert len(cycle_vios) >= 1, \
+            f"{name}: expected cycle detection, got none"
     events = [
         ToolEvent("Read", {}, event_id="r1"),
         ToolEvent("Grep", {}, event_id="r2"),

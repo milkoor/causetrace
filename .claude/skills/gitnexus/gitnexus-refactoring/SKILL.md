@@ -29,10 +29,10 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ### Rename Symbol
 
 ```
-- [ ] gitnexus_context({name: "oldName"}) — identify references and call sites
-- [ ] gitnexus_impact({target: "oldName", direction: "upstream"}) — assess callers
-- [ ] Edit definitions and verified references in scope
-- [ ] Inspect `git diff --stat` and search for remaining old-name references
+- [ ] gitnexus_rename({symbol_name: "oldName", new_name: "newName", dry_run: true}) — preview all edits
+- [ ] Review graph edits (high confidence) and ast_search edits (review carefully)
+- [ ] If satisfied: gitnexus_rename({..., dry_run: false}) — apply edits
+- [ ] gitnexus_detect_changes() — verify only expected files changed
 - [ ] Run tests for affected processes
 ```
 
@@ -43,7 +43,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 - [ ] gitnexus_impact({target, direction: "upstream"}) — find all external callers
 - [ ] Define new module interface
 - [ ] Extract code, update imports
-- [ ] Inspect `git diff --stat` and run relevant tests
+- [ ] gitnexus_detect_changes() — verify affected scope
 - [ ] Run tests for affected processes
 ```
 
@@ -55,17 +55,19 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 - [ ] gitnexus_impact({target, direction: "upstream"}) — map callers to update
 - [ ] Create new functions/services
 - [ ] Update callers
-- [ ] Inspect `git diff --stat` and run relevant tests
+- [ ] gitnexus_detect_changes() — verify affected scope
 - [ ] Run tests for affected processes
 ```
 
 ## Tools
 
-**gitnexus_context** — enumerate references before a rename:
+**gitnexus_rename** — automated multi-file rename:
 
 ```
-gitnexus_context({name: "validateUser"})
-→ Incoming callers and outgoing dependencies to update deliberately
+gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
+→ 12 edits across 8 files
+→ 10 graph edits (high confidence), 2 ast_search edits (review)
+→ Changes: [{file_path, edits: [{line, old_text, new_text, confidence}]}]
 ```
 
 **gitnexus_impact** — map all dependents first:
@@ -76,11 +78,13 @@ gitnexus_impact({target: "validateUser", direction: "upstream"})
 → Affected Processes: LoginFlow, TokenRefresh
 ```
 
-**Diff and tests** — verify your changes after refactoring:
+**gitnexus_detect_changes** — verify your changes after refactoring:
 
 ```
-git diff --stat
-pytest tests/ -v
+gitnexus_detect_changes({scope: "all"})
+→ Changed: 8 files, 12 symbols
+→ Affected processes: LoginFlow, TokenRefresh
+→ Risk: MEDIUM
 ```
 
 **gitnexus_cypher** — custom reference queries:
@@ -94,21 +98,24 @@ RETURN caller.name, caller.filePath ORDER BY caller.filePath
 
 | Risk Factor         | Mitigation                                |
 | ------------------- | ----------------------------------------- |
-| Many callers (>5)   | Use `context` and `impact` before editing |
-| Cross-area refs     | Inspect diff and test all affected paths  |
+| Many callers (>5)   | Use gitnexus_rename for automated updates |
+| Cross-area refs     | Use detect_changes after to verify scope  |
 | String/dynamic refs | gitnexus_query to find them               |
 | External/public API | Version and deprecate properly            |
 
 ## Example: Rename `validateUser` to `authenticateUser`
 
 ```
-1. gitnexus_context({name: "validateUser"})
-   → Identify definition, callers, tests, and dynamic-reference risk
+1. gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
+   → 12 edits: 10 graph (safe), 2 ast_search (review)
+   → Files: validator.ts, login.ts, middleware.ts, config.json...
 
-2. gitnexus_impact({target: "validateUser", direction: "upstream"})
+2. Review ast_search edits (config.json: dynamic reference!)
+
+3. gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: false})
+   → Applied 12 edits across 8 files
+
+4. gitnexus_detect_changes({scope: "all"})
    → Affected: LoginFlow, TokenRefresh
-
-3. Rename the definition and verified callers; search for remaining references.
-
-4. Inspect `git diff --stat` and run tests for affected flows.
+   → Risk: MEDIUM — run tests for these flows
 ```

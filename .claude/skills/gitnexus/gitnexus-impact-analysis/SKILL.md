@@ -19,7 +19,7 @@ description: "Use when the user wants to know what will break if they change som
 ```
 1. gitnexus_impact({target: "X", direction: "upstream"})  → What depends on this
 2. READ gitnexus://repo/{name}/processes                   → Check affected execution flows
-3. git diff --stat; run impact for changed symbols          → Verify current scope
+3. gitnexus_detect_changes()                               → Map current git changes to affected flows
 4. Assess risk and report to user
 ```
 
@@ -32,7 +32,7 @@ description: "Use when the user wants to know what will break if they change som
 - [ ] Review d=1 items first (these WILL BREAK)
 - [ ] Check high-confidence (>0.8) dependencies
 - [ ] READ processes to check affected execution flows
-- [ ] Inspect `git diff --stat` and run `impact` for changed public symbols
+- [ ] gitnexus_detect_changes() for pre-commit check
 - [ ] Assess risk level and report to user
 ```
 
@@ -73,12 +73,14 @@ gitnexus_impact({
   - authRouter (src/routes/auth.ts:22) [CALLS, 95%]
 ```
 
-**Git diff plus impact** — verify current changes:
+**gitnexus_detect_changes** — git-diff based impact analysis:
 
 ```
-git diff --stat
-gitnexus_impact({target: "changedPublicSymbol", direction: "upstream"})
-→ Review changed files, affected flows, and risk before committing
+gitnexus_detect_changes({scope: "staged"})
+
+→ Changed: 5 symbols in 3 files
+→ Affected: LoginFlow, TokenRefresh, APIMiddlewarePipeline
+→ Risk: MEDIUM
 ```
 
 ## Example: "What breaks if I change validateUser?"

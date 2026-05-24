@@ -49,6 +49,19 @@ Zero intra-project dependencies. Operates on ToolEvent interfaces via duck-typin
 the loaded session. A parent reference outside the loaded session is retained
 in raw data but its child is a local analysis root.
 
+## Layer 1.55: Invariants (`causetrace/invariants.py`)
+
+Composable DAG correctness checkers. Zero intra-project dependencies.
+
+**Exports:** `check_unique_ids`, `check_acyclicity`, `check_local_references`,
+`check_root_definition`, `check_invariants`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `tests/test_dag_fixtures.py` | `check_invariants` (parametrized invariant battery) |
+
 ## Layer 1.6: Annotation (`causetrace/annotation.py`)
 
 Zero intra-project dependencies. Sidecar JSON metadata store for session task labels.
