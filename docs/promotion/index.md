@@ -11,6 +11,7 @@ Track promotion activities. Add entries when new content is published.
 | 2026-05-14 | Blog | Reverse engineering Codex CLI rollout traces | https://dev.to/milkoor/reverse-engineering-codex-cli-rollout-traces-3b9b | Live |
 | 2026-05-14 | X/Twitter | Tweet 1: Causal tree vs flat log | URL not recorded | Publication unverified |
 | 2026-05-24 | Release | v0.1.3 - Runnable onboarding for agent causal tracing | https://github.com/milkoor/causetrace/releases/tag/v0.1.3 | GitHub live; PyPI pending publisher registration |
+| 2026-05-24 | Discussion | Share a sanitized AI coding agent trace or debugging case | https://github.com/milkoor/causetrace/discussions/1 | Live |
 
 ## Pending
 
