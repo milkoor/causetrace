@@ -967,6 +967,15 @@ def _handle_compare(store, args) -> None:
         print(f"    {key:25s}  {bar_a:30s} {ca:>4d}  {bar_b:30s} {cb:>4d}{marker}")
 
 
+def _is_malformed_json(line: str) -> bool:
+    """Check if a non-empty line is valid JSON."""
+    try:
+        json.loads(line)
+        return False
+    except json.JSONDecodeError:
+        return True
+
+
 def _validate_raw(sid: str, raw: list[str]) -> dict:
     """Parse and validate raw JSONL lines for a session. Returns validate_session result dict."""
     events = []
@@ -982,10 +991,16 @@ def _validate_raw(sid: str, raw: list[str]) -> dict:
                 pass
             except (AttributeError, KeyError, TypeError) as exc:
                 schema_errors.append(f"Line {line_number}: invalid event data ({exc})")
-    result = validate_session(events, raw_lines=raw)
+    malformed = sum(1 for line in raw if line.strip() and _is_malformed_json(line))
+    result = validate_session(events)
+    result["malformed_lines"] = malformed
     if schema_errors:
         result["errors"].extend(schema_errors)
         result["valid"] = False
+    if malformed:
+        result["warnings"].append(f"{malformed} malformed JSON line(s) skipped")
+        if not result["errors"]:
+            result["valid"] = False
     return result
 
 

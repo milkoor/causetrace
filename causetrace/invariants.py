@@ -8,13 +8,9 @@ Use ``check_invariants()`` to run the full battery.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
-
-def _parse_parents(parent_event_id: Optional[str]) -> List[str]:
-    if not parent_event_id:
-        return []
-    return [p.strip() for p in parent_event_id.split(",") if p.strip()]
+from .analysis import _parse_parents
 
 
 def _build_indexes(events) -> Tuple[Dict[str, Set[str]], Dict[str, List[str]], Set[str]]:
@@ -110,12 +106,12 @@ def check_root_definition(events) -> List[str]:
 
 # ── Battery runner ──
 
-INVARIANTS: List[tuple[str, str]] = [
-    ("unique_ids", "No duplicate event IDs"),
-    ("acyclicity", "No cycles in parent chains"),
-    ("local_references", "All parent refs resolve to known events"),
-    ("root_definition", "Roots defined as indegree-0 nodes"),
-]
+CHECKERS: Dict[str, tuple] = {
+    "unique_ids": (check_unique_ids, "No duplicate event IDs"),
+    "acyclicity": (check_acyclicity, "No cycles in parent chains"),
+    "local_references": (check_local_references, "All parent refs resolve to known events"),
+    "root_definition": (check_root_definition, "Roots defined as indegree-0 nodes"),
+}
 
 
 def check_invariants(events) -> dict:
@@ -128,17 +124,11 @@ def check_invariants(events) -> dict:
             "checks": {name: {"description": str, "violations": [str, ...]}},
         }
     """
-    checkers = {
-        "unique_ids": check_unique_ids,
-        "acyclicity": check_acyclicity,
-        "local_references": check_local_references,
-        "root_definition": check_root_definition,
-    }
     results: dict = {}
     all_ok = True
-    for name in INVARIANTS:
-        violations = checkers[name[0]](events)
-        results[name[0]] = {"description": name[1], "violations": violations}
+    for name, (check_fn, description) in CHECKERS.items():
+        violations = check_fn(events)
+        results[name] = {"description": description, "violations": violations}
         if violations:
             all_ok = False
 

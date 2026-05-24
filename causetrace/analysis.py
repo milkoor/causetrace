@@ -392,24 +392,14 @@ def transition_entropy(events) -> float:
     """
     from math import log2
 
-    if len(events) < 2:
-        return 0.0
-
-    by_id = _by_id(events)
-    counter: Counter = Counter()
-    for ev in events:
-        for parent_id in _parse_parents(ev.parent_event_id):
-            parent = by_id.get(parent_id)
-            if parent:
-                counter[(parent.tool_name, ev.tool_name)] += 1
-
-    total = sum(counter.values())
+    trans = detect_common_transitions(events, top_n=None)
+    total = sum(t["count"] for t in trans)
     if total == 0:
         return 0.0
 
     entropy = 0.0
-    for count in counter.values():
-        p = count / total
+    for t in trans:
+        p = t["count"] / total
         entropy -= p * log2(p)
     return round(entropy, 4)
 
@@ -424,9 +414,10 @@ def branch_density(events) -> dict:
     Low density = deep, narrow topology (few branches, high depth).
     Zero depth yields 0.0 for both metrics.
     """
-    children, _ = _build_graph_indexes(events)
     if not events:
         return {"avg_branch_density": 0.0, "max_branch_density": 0.0}
+
+    children, parent_map = _build_graph_indexes(events)
 
     fan_outs = [len(children.get(ev.event_id, [])) for ev in events]
     avg_fan_out = sum(fan_outs) / len(fan_outs)
@@ -434,7 +425,7 @@ def branch_density(events) -> dict:
 
     root_ids = [
         ev.event_id for ev in events
-        if not _parse_parents(ev.parent_event_id)
+        if not parent_map[ev.event_id]
     ]
     depths = _depths_from_roots(root_ids, children)
     avg_depth = sum(depths.values()) / len(depths) if depths else 0.0
@@ -485,24 +476,11 @@ def path_reuse_ratio(events, max_depth: int = 10) -> dict:
     if not events:
         return {"reuse_ratio": 0.0, "total_paths": 0, "unique_paths": 0}
 
-    by_id = _by_id(events)
-    children = _build_child_index(events)
-    pattern_counter: Counter = Counter()
-
-    for start in by_id:
-        stack = [(start, [start])]
-        while stack:
-            node, path = stack.pop()
-            if len(path) >= 2:
-                pattern_counter[tuple(by_id[eid].tool_name for eid in path)] += 1
-            if len(path) >= max_depth:
-                continue
-            for child in children.get(node, []):
-                if child in by_id and child not in path:
-                    stack.append((child, path + [child]))
-
-    total_paths = sum(pattern_counter.values())
-    unique_paths = len(pattern_counter)
+    patterns = detect_repeated_paths(
+        events, min_length=2, max_length=max_depth, min_occurrences=1,
+    )
+    total_paths = sum(p["occurrences"] for p in patterns)
+    unique_paths = len(patterns)
 
     return {
         "reuse_ratio": round(1.0 - (unique_paths / total_paths), 4) if total_paths > 0 else 0.0,
@@ -644,7 +622,7 @@ def detect_repeated_paths(
 
 def detect_common_transitions(
     events,
-    top_n: int = 15,
+    top_n: Optional[int] = 15,
 ) -> List[dict]:
     """Count (tool_i → tool_j) transitions across the session.
 
@@ -664,7 +642,8 @@ def detect_common_transitions(
                 counter[(parent.tool_name, ev.tool_name)] += 1
 
     results = []
-    for (a, b), count in counter.most_common(top_n):
+    n = top_n if top_n is not None else len(counter)
+    for (a, b), count in counter.most_common(n):
         results.append({"from_tool": a, "to_tool": b, "count": count})
 
     return results

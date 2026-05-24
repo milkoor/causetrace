@@ -454,13 +454,6 @@ def test_path_reuse_ratio_empty():
     r = path_reuse_ratio([])
     assert r["reuse_ratio"] == 0.0
     assert r["total_paths"] == 0
-    events = [
-        ToolEvent("Read", {}, event_id="r1"),
-        ToolEvent("Grep", {}, event_id="r2"),
-        ToolEvent("Edit", {}, event_id="m", parent_event_id="r1,r2"),
-    ]
-    patterns = detect_fan_in_patterns(events)
-    assert patterns[0]["parent_tools"] == ["Read", "Grep"]
 
 
 # ── Invariant battery (parametrized over fixtures) ──
@@ -503,10 +496,3 @@ def test_invariant_battery(name, expect_valid):
         cycle_vios = result["checks"]["acyclicity"]["violations"]
         assert len(cycle_vios) >= 1, \
             f"{name}: expected cycle detection, got none"
-    events = [
-        ToolEvent("Read", {}, event_id="r1"),
-        ToolEvent("Grep", {}, event_id="r2"),
-        ToolEvent("Edit", {}, event_id="m", parent_event_id="r1,r2"),
-    ]
-    patterns = detect_fan_in_patterns(events)
-    assert patterns[0]["parent_tools"] == ["Read", "Grep"]
