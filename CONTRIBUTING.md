@@ -67,7 +67,19 @@ Maintainer only. To publish a new version:
 
 The workflow uses PyPI Trusted Publishing through GitHub Actions OIDC
 (`id-token: write`). Configure the `milkoor/causetrace` project as a trusted
-publisher on PyPI; no repository API token is used by the workflow.
+publisher on PyPI; no repository API token is used by the workflow. The PyPI
+GitHub publisher fields must match:
+
+```text
+Owner:       milkoor
+Repository:  causetrace
+Workflow:    publish.yml
+Environment: (blank)
+```
+
+If publishing fails with `invalid-publisher`, register or correct these fields
+under the PyPI project's Publishing settings, then rerun the failed GitHub
+Actions job.
 
 To publish manually:
 ```bash

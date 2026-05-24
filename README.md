@@ -7,6 +7,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/causetrace.svg)](https://pypi.org/project/causetrace/)
 [![License](https://img.shields.io/github/license/milkoor/causetrace.svg)](LICENSE)
 
+> **Release status:** `v0.1.3` is available on GitHub. PyPI still serves
+> `0.1.2` until its Trusted Publisher is registered for this repository.
+
 **causetrace** is a Python tracing and observability tool for AI coding agents
 such as Claude Code, Codex CLI, OpenCode, Aider, Continue.dev, and GitHub
 Copilot. It captures tool calls and links them into causal trees and DAGs,
@@ -147,7 +150,7 @@ Usage notes:
 ## Quick Start
 
 ```bash
-pip install causetrace
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.1.3"
 
 # Create a saved sample trace and immediately see the causal tree
 causetrace demo
@@ -155,6 +158,8 @@ causetrace demo
 
 `demo` prints the generated session ID plus ready-to-run `graph`, `why`, and
 `stats` commands. No agent configuration or fixture download is required.
+After the PyPI publisher is activated, installation becomes
+`pip install causetrace`.
 
 ### Hook up Claude Code
 

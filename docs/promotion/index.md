@@ -10,6 +10,7 @@ Track promotion activities. Add entries when new content is published.
 | 2026-05-14 | Blog | Coding agents produce causal DAGs, not logs | https://dev.to/milkoor/coding-agents-produce-causal-dags-not-logs-ne6 | Live |
 | 2026-05-14 | Blog | Reverse engineering Codex CLI rollout traces | https://dev.to/milkoor/reverse-engineering-codex-cli-rollout-traces-3b9b | Live |
 | 2026-05-14 | X/Twitter | Tweet 1: Causal tree vs flat log | URL not recorded | Publication unverified |
+| 2026-05-24 | Release | v0.1.3 - Runnable onboarding for agent causal tracing | https://github.com/milkoor/causetrace/releases/tag/v0.1.3 | GitHub live; PyPI pending publisher registration |
 
 ## Pending
 
@@ -22,6 +23,7 @@ Track promotion activities. Add entries when new content is published.
 | Blog 3: Claude Code hooks parent_event_id bug | Outline in `docs/promotion/blog_posts.md` | Next major cycle |
 | Existing dev.to updates | Source corrected; live update requires `DEVTO_API_KEY` | After v0.1.3 release |
 | Reddit post | Drafts ready | After v0.1.3 release and demo image |
+| PyPI `0.1.3` upload | Workflow built artifacts; OIDC returned `invalid-publisher` | Register Trusted Publisher, then rerun workflow |
 
 ## Templates
 

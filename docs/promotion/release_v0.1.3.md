@@ -6,7 +6,7 @@ Claude Code, Codex CLI, OpenCode, and other Python workflows.
 Version 0.1.3 removes the first-run barrier:
 
 ```bash
-pip install causetrace
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.1.3"
 causetrace demo
 ```
 
@@ -27,6 +27,10 @@ Technical case study: Codex CLI rollout parsing is validated against real
 https://github.com/milkoor/causetrace/blob/main/docs/case-studies/codex-rollout-parser.md
 
 Repository: https://github.com/milkoor/causetrace
+
+Release note: the GitHub tag is live; the PyPI upload is pending registration
+of this repository's Trusted Publisher. Switch the install line to
+`pip install causetrace` once PyPI exposes version `0.1.3`.
 
 ## Distribution Checklist
 
