@@ -81,7 +81,7 @@ def _link_sequential(turn: List[ToolEvent], by_id: Dict[str, ToolEvent]) -> None
     """Chain events chronologically within a turn."""
     prev_id: Optional[str] = None
     for ev in turn:
-        if ev.tool_name in ("question", "invalid"):
+        if ev.tool_name.lower() in ("question", "invalid"):
             prev_id = None
             continue
         if prev_id and not ev.parent_event_id:
@@ -114,16 +114,16 @@ def _detect_fan_in(turn: List[ToolEvent], max_gap: int = 3) -> Dict[str, List[st
     fan_ins: Dict[str, List[str]] = defaultdict(list)
 
     for i, ev in enumerate(turn):
-        if ev.tool_name not in _WRITE_TOOLS:
+        if ev.tool_name.lower() not in _WRITE_TOOLS:
             continue
 
         read_ids: List[str] = []
         seen_non_read = 0
         for j in range(i - 1, -1, -1):
             prev = turn[j]
-            if prev.tool_name in ("question", "invalid"):
+            if prev.tool_name.lower() in ("question", "invalid"):
                 break
-            if prev.tool_name in _READ_TOOLS:
+            if prev.tool_name.lower() in _READ_TOOLS:
                 # 时间戳检查：确保读事件早于写事件
                 if prev.timestamp and ev.timestamp and prev.timestamp <= ev.timestamp:
                     read_ids.append(prev.event_id)
@@ -137,7 +137,7 @@ def _detect_fan_in(turn: List[ToolEvent], max_gap: int = 3) -> Dict[str, List[st
 
         if len(read_ids) >= 2:
             fan_ins[ev.event_id] = read_ids
-        elif len(read_ids) == 1 and ev.tool_name in ("bash", "interactive_bash"):
+        elif len(read_ids) == 1 and ev.tool_name.lower() in ("bash", "interactive_bash"):
             fan_ins[ev.event_id] = read_ids
 
     return fan_ins

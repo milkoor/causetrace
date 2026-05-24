@@ -16,6 +16,7 @@ Zero intra-project dependencies. Foundation layer.
 | Consumer | What it uses |
 |----------|-------------|
 | `cli.py` | `JSONStore`, `ReplayEngine`, `TimelineRenderer`, `trace_causal_chain`, `validate_session` |
+| `analysis.py` | (duck-typing only — no import of core, consumes ToolEvent interfaces) |
 | `hooks/aider_bridge.py` | `TraceRecorder` |
 | `hooks/claude_code.py` | `TraceRecorder` |
 | `hooks/claude_project_parser.py` | `ToolEvent` |
@@ -28,6 +29,32 @@ Zero intra-project dependencies. Foundation layer.
 | `demo/run_demo.py` | `TraceRecorder` |
 | `tests/test_invariants.py` | All core exports |
 | `tests/test_hooks_integration.py` | `JSONStore`, `ToolEvent`, `build_tree` |
+
+## Layer 1.5: Analysis (`causetrace/analysis.py`)
+
+Zero intra-project dependencies. Operates on ToolEvent interfaces via duck-typing.
+
+**Exports:** `compute_stats`, `find_roots`, `longest_path`, `fan_out_distribution`,
+`connected_components`, `detect_repeated_paths`, `detect_common_transitions`,
+`detect_fan_in_patterns`, `detect_branch_collapse`, `windowed`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | All 9 exports |
+
+## Layer 1.6: Annotation (`causetrace/annotation.py`)
+
+Zero intra-project dependencies. Sidecar JSON metadata store for session task labels.
+
+**Exports:** `load_annotation`, `save_annotation`, `list_annotated`, `list_unannotated`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | All 4 exports |
 
 ## Layer 2: Causality (`causetrace/causality.py`)
 

@@ -137,6 +137,7 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
                     tool_name=tool,
                     tool_input={},
                     duration_ms=duration,
+                    timestamp=ts,
                 ))
 
     infer_relations(events)

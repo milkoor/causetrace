@@ -266,3 +266,147 @@ def test_validate_orphans():
     ]
     result = validate_session(events)
     assert result["orphan_count"] >= 1
+
+
+def test_validate_multi_parent_cycle():
+    """Multi-parent cycle a->(root,b), b->a is detected across all parent edges."""
+    events = [
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="a", parent_event_id="root,b"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="b", parent_event_id="a"),
+    ]
+    result = validate_session(events)
+    assert result["valid"] is False
+    assert len(result["cycles"]) >= 1
+
+
+def test_session_id_path_traversal_blocked():
+    from causetrace.core import _validate_session_id
+    import pytest
+    with pytest.raises(ValueError, match="Invalid session_id"):
+        _validate_session_id("../escaped")
+    with pytest.raises(ValueError, match="Invalid session_id"):
+        _validate_session_id("a/b")
+    # Valid IDs should pass
+    _validate_session_id("normal_123")
+    _validate_session_id("codex-2026-05-01")
+    _validate_session_id("session.456")
+
+
+def test_malformed_jsonl_validate_no_crash():
+    """Validate command handler parsing malformed JSONL must not crash."""
+    import tempfile, json
+    from pathlib import Path
+    d = tempfile.mkdtemp()
+    f = Path(d) / "bad.jsonl"
+    f.write_text('{"event_id":"a","tool_name":"Bash","tool_input":{}}\nnot json\n{"event_id":"b","tool_name":"Read","tool_input":{}}\n')
+    raw = f.read_text().splitlines()
+    events = []
+    for line in raw:
+        if line.strip():
+            try:
+                events.append(ToolEvent.from_dict(json.loads(line)))
+            except (json.JSONDecodeError, KeyError):
+                pass
+    result = validate_session(events, raw_lines=raw)
+    assert result["malformed_lines"] == 1
+    assert result["valid"] is False
+
+
+def test_avg_depth_correct():
+    """3-node chain (root depth 0, child depth 1, grandchild depth 2) => avg_depth=1.0"""
+    from causetrace.analysis import compute_stats
+    events = [
+        ToolEvent(tool_name="Read", tool_input={}, event_id="root"),
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="a", parent_event_id="root"),
+        ToolEvent(tool_name="Edit", tool_input={}, event_id="b", parent_event_id="a"),
+    ]
+    stats = compute_stats(events)
+    assert stats["avg_depth"] == 1.0
+    assert stats["max_depth"] == 2
+
+
+def test_longest_path_merge_dag():
+    """DAG with merge node: longest path must traverse the longer branch through the merge."""
+    from causetrace.analysis import longest_path
+    events = [
+        ToolEvent(tool_name="Read", tool_input={}, event_id="root_a"),
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="x", parent_event_id="root_a"),
+        ToolEvent(tool_name="Edit", tool_input={}, event_id="y", parent_event_id="x"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="z", parent_event_id="y"),
+        ToolEvent(tool_name="Bash", tool_input={}, event_id="root_b"),
+        ToolEvent(tool_name="Write", tool_input={}, event_id="w", parent_event_id="root_b"),
+    ]
+    events[2].parent_event_id = "root_a,w"  # merge: y's parents are both root_a and w
+    path = longest_path(events)
+    assert len(path) >= 4  # must traverse root_b -> w -> y -> z or root_a -> x -> y -> z
+
+
+def test_causality_tool_name_case_insensitive():
+    """_detect_fan_in should match tool names regardless of case."""
+    from causetrace.causality import _detect_fan_in
+    from causetrace.core import ToolEvent
+    events = [
+        ToolEvent(tool_name="Read", tool_input={"file": "a"}, event_id="r1", timestamp="2026-01-01T00:00:01"),
+        ToolEvent(tool_name="Grep", tool_input={"pat": "x"}, event_id="r2", timestamp="2026-01-01T00:00:02"),
+        ToolEvent(tool_name="Edit", tool_input={"line": "42"}, event_id="w1", timestamp="2026-01-01T00:00:03"),
+    ]
+    result = _detect_fan_in(events)
+    assert len(result) >= 1, "fan-in should detect Edit with Read/Grep parents (capitalized)"
+
+
+def test_opencode_tailer_preserves_timestamp():
+    """OpenCode tailer must pass parsed ts to ToolEvent."""
+    import tempfile
+    from pathlib import Path
+    import causetrace.hooks.opencode_tailer as tailer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_dir = Path(tmp)
+        (log_dir / "tool.log").write_text(
+            "INFO  2026-05-01T02:03:04 service=tool.registry status=started read\n"
+            "INFO  2026-05-01T02:03:05 service=tool.registry status=completed duration=9 read\n"
+        )
+        old_log_dir = tailer.LOG_DIR
+        tailer.LOG_DIR = log_dir
+        try:
+            events = tailer.scan_logs(max_files=1)
+        finally:
+            tailer.LOG_DIR = old_log_dir
+    assert events[0].timestamp == "2026-05-01T02:03:05"
+
+
+def test_validate_cli_returns_failure_for_invalid_session():
+    """The validate command must fail when it reports invalid trace data."""
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as tmp:
+        store_dir = Path(tmp) / ".causetrace" / "data"
+        store_dir.mkdir(parents=True)
+        (store_dir / "bad.jsonl").write_text("not json\n")
+        env = {**os.environ, "HOME": tmp}
+        result = subprocess.run(
+            [sys.executable, "-m", "causetrace", "validate", "bad"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    assert result.returncode != 0
+    assert "Valid: False" in result.stdout
+
+
+def test_validate_cli_rejects_non_event_json_without_crashing():
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as tmp:
+        store_dir = Path(tmp) / ".causetrace" / "data"
+        store_dir.mkdir(parents=True)
+        (store_dir / "bad.jsonl").write_text("[]\n")
+        env = {**os.environ, "HOME": tmp}
+        result = subprocess.run(
+            [sys.executable, "-m", "causetrace", "validate", "bad"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    assert result.returncode != 0
+    assert "invalid event data" in result.stdout

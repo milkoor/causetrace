@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -11,6 +12,18 @@ from typing import Any, Dict, List, Optional
 
 
 SCHEMA_VERSION = "0.1"
+
+# Safe session_id pattern: alphanumeric, underscore, hyphen, dot
+_VALID_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def _validate_session_id(session_id: str) -> None:
+    """Validate session_id to prevent path traversal."""
+    if not _VALID_ID_RE.match(session_id):
+        raise ValueError(
+            f"Invalid session_id: {session_id!r}. "
+            "Only alphanumeric, underscore, hyphen, and dot allowed."
+        )
 
 
 __all__ = [
@@ -191,6 +204,7 @@ class JSONStore:
         self.store_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, session_id: str) -> Path:
+        _validate_session_id(session_id)
         return self.store_dir / f"{session_id}.jsonl"
 
     def append(self, session_id: str, event: ToolEvent) -> None:
@@ -263,26 +277,33 @@ def validate_session(events: List[ToolEvent], raw_lines: Optional[List[str]] = N
     result["orphan_count"] = orphans
 
     # Cycle detection: walk each parent chain, detect loops
+    # Check ALL parent edges, not just the first one
     visited_global: set = set()
     for ev in events:
         if ev.event_id in visited_global:
             continue
-        chain: set = set()
-        current = ev
-        while current:
-            if current.event_id in chain:
-                result["cycles"].append(f"Cycle detected involving {current.event_id}")
-                result["errors"].append(f"Cycle in parent chain near {current.event_id}")
-                break
-            chain.add(current.event_id)
-            visited_global.add(current.event_id)
-            parents = _parse_parents(current)
-            if not parents:
-                break
-            # Follow first parent for cycle detection
-            current = by_id.get(parents[0])
-            if current is None:
-                break
+        # BFS/DFS across all edges to find cycles reachable from this node
+        stack = [(ev.event_id, [ev.event_id])]
+        while stack:
+            node_id, path = stack.pop()
+            if node_id in visited_global and len(path) == 1:
+                continue
+            node = by_id.get(node_id)
+            if not node:
+                continue
+            parents = _parse_parents(node)
+            for pid in parents:
+                if pid in by_id:
+                    if pid in path:
+                        result["cycles"].append(
+                            f"Cycle detected: {' → '.join(path[path.index(pid):] + [pid])}"
+                        )
+                        result["errors"].append(
+                            f"Cycle in parent chain near {pid}"
+                        )
+                    else:
+                        stack.append((pid, path + [pid]))
+            visited_global.add(node_id)
 
     # Timestamp check
     for ev in events:

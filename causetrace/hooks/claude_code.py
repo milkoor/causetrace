@@ -5,6 +5,7 @@ PostToolUse → calculate duration, record event with causal link
 """
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,16 @@ from causetrace.core import TraceRecorder
 _ACTIVE_DIR = Path.home() / ".causetrace" / "active"
 _CC_MODEL = os.environ.get("ANTHROPIC_MODEL", "") or "unknown"
 _CC_PROVIDER = "anthropic"
+
+_VALID_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def _validate_session_id(session_id: str) -> None:
+    if not _VALID_ID_RE.match(session_id):
+        raise ValueError(
+            f"Invalid session_id: {session_id!r}. "
+            "Only alphanumeric, underscore, hyphen, and dot allowed."
+        )
 
 
 def main() -> None:
@@ -69,6 +80,7 @@ def main() -> None:
 
 
 def _save_pre(session_id: str, tool_name: str) -> None:
+    _validate_session_id(session_id)
     _ACTIVE_DIR.mkdir(parents=True, exist_ok=True)
     data = {
         "start_time": time.time(),
@@ -90,6 +102,7 @@ def _load_pre(session_id: str, tool_name: str) -> dict | None:
 
 
 def _last_event_id_path(session_id: str) -> Path:
+    _validate_session_id(session_id)
     return _ACTIVE_DIR / f"{session_id}_last_event_id"
 
 
