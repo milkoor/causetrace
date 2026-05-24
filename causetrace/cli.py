@@ -12,7 +12,8 @@ from .core import JSONStore, ReplayEngine, TimelineRenderer, ToolEvent, trace_ca
 from .analysis import (
     compute_stats, find_roots, longest_path, fan_out_distribution,
     connected_components, detect_repeated_paths, detect_common_transitions,
-    detect_fan_in_patterns, detect_branch_collapse,
+    detect_fan_in_patterns, detect_branch_collapse, classify_topology,
+    TOPOLOGY_PHENOTYPES,
 )
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
@@ -233,6 +234,12 @@ def cli(argv: list[str] | None = None) -> None:
     p_an.add_argument("--notes", help="Free-text observation notes")
     p_an.add_argument("--list", action="store_true", dest="_list", help="List all annotated sessions")
     p_an.add_argument("--unannotated", action="store_true", help="List sessions without annotations")
+
+    p_cr = sub.add_parser("corpus", help="Query and filter session corpus")
+    p_cr.add_argument("--runtime", help="Filter by runtime (e.g. claude, codex, opencode)")
+    p_cr.add_argument("--task", choices=list(TASK_TYPES), help="Filter by task type")
+    p_cr.add_argument("--topology", choices=list(TOPOLOGY_PHENOTYPES), help="Filter by topology phenotype")
+    p_cr.add_argument("--source", choices=list(SOURCES), help="Filter by session source")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -563,6 +570,9 @@ def cli(argv: list[str] | None = None) -> None:
     elif args.command == "annotate":
         _handle_annotate(store, args)
 
+    elif args.command == "corpus":
+        _handle_corpus(store, args)
+
     elif args.command == "compare":
         _handle_compare(store, args)
 
@@ -878,6 +888,62 @@ def _handle_annotate(store, args) -> None:
         if k in ("session_id", "annotated_at"):
             continue
         print(f"  {k}: {v}")
+
+
+def _handle_corpus(store, args) -> None:
+    """Handle ``causetrace corpus``."""
+    sids = store.list_sessions()
+    if not sids:
+        print("No sessions found.")
+        return
+
+    rows = []
+    for sid in sids:
+        annotation = load_annotation(sid)
+        runtime = annotation.get("runtime", annotation.get("agent", "")) or ""
+        task = annotation.get("task_type", "") or ""
+        source = annotation.get("source", "") or ""
+        topology = annotation.get("topology", "") or ""
+
+        events = store.load(sid)
+        stats = compute_stats(events) if events else {}
+        if not topology:
+            topology = classify_topology(stats)
+        topology = topology or ""
+
+        rows.append({
+            "session_id": sid,
+            "runtime": runtime,
+            "task": task,
+            "topology": topology,
+            "events": stats.get("event_count", 0),
+            "depth": stats.get("max_depth", 0),
+            "roots": stats.get("root_count", 0),
+            "source": source,
+        })
+
+    # Filter
+    if args.runtime:
+        rows = [r for r in rows if args.runtime.lower() in r["runtime"].lower()]
+    if args.task:
+        rows = [r for r in rows if r["task"] == args.task]
+    if args.topology:
+        rows = [r for r in rows if r["topology"] == args.topology]
+    if args.source:
+        rows = [r for r in rows if r["source"] == args.source]
+
+    if not rows:
+        print("No matching sessions.")
+        return
+
+    # Print table
+    header = f"{'Session ID':24s}  {'Runtime':12s}  {'Task':14s}  {'Topology':22s}  {'Events':>6s}  {'Depth':>5s}  {'Roots':>5s}"
+    print(f"Corpus: {len(rows)} session(s)\n")
+    print(header)
+    print("-" * len(header))
+    for r in rows:
+        sid = r["session_id"][:22]
+        print(f"{sid:24s}  {r['runtime']:12s}  {r['task']:14s}  {r['topology']:22s}  {r['events']:6d}  {r['depth']:5d}  {r['roots']:5d}")
 
 
 def _handle_compare(store, args) -> None:

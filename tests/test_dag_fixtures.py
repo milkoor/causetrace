@@ -18,7 +18,7 @@ from causetrace.analysis import (
     compute_stats, find_roots, longest_path, connected_components,
     detect_common_transitions, detect_fan_in_patterns, detect_repeated_paths,
     windowed, transition_entropy, branch_density, root_spawning_rate,
-    path_reuse_ratio,
+    path_reuse_ratio, classify_topology,
 )
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "dags"
@@ -454,6 +454,39 @@ def test_path_reuse_ratio_empty():
     r = path_reuse_ratio([])
     assert r["reuse_ratio"] == 0.0
     assert r["total_paths"] == 0
+
+
+# ── Topology classification ──
+
+def test_classify_topology_dominant_chain():
+    stats = {"root_count": 1, "event_count": 100, "max_depth": 80,
+             "avg_depth": 40.0, "fan_out_avg": 0.5, "fan_out_max": 1,
+             "multi_parent_count": 0}
+    assert classify_topology(stats) == "dominant_chain"
+
+def test_classify_topology_multi_root():
+    stats = {"root_count": 12, "event_count": 50, "max_depth": 2,
+             "avg_depth": 0.8, "fan_out_avg": 0.3, "fan_out_max": 2,
+             "multi_parent_count": 0}
+    assert classify_topology(stats) == "multi_root_exploration"
+
+def test_classify_topology_fan_out_heavy():
+    stats = {"root_count": 1, "event_count": 50, "max_depth": 3,
+             "avg_depth": 1.5, "fan_out_avg": 3.0, "fan_out_max": 20,
+             "multi_parent_count": 0}
+    assert classify_topology(stats) == "fan_out_heavy"
+
+def test_classify_topology_collapsed():
+    stats = {"root_count": 2, "event_count": 100, "max_depth": 10,
+             "avg_depth": 4.0, "fan_out_avg": 0.8, "fan_out_max": 3,
+             "multi_parent_count": 8}
+    assert classify_topology(stats) == "collapsed_repair"
+
+def test_classify_topology_mixed():
+    stats = {"root_count": 4, "event_count": 100, "max_depth": 15,
+             "avg_depth": 5.0, "fan_out_avg": 0.9, "fan_out_max": 3,
+             "multi_parent_count": 1}
+    assert classify_topology(stats) == "mixed"
 
 
 # ── Invariant battery (parametrized over fixtures) ──

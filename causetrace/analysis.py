@@ -8,6 +8,9 @@ Layer 1.2 — Entropy & density (derived topological measures):
     transition_entropy, branch_density, root_spawning_rate,
     path_reuse_ratio
 
+Layer 1.3 — Morphology (structural phenotype classification):
+    classify_topology
+
 Layer 2 — Pattern (repeated structures, no semantic interpretation):
     detect_repeated_paths, detect_common_transitions,
     detect_fan_in_patterns, detect_branch_collapse
@@ -487,6 +490,74 @@ def path_reuse_ratio(events, max_depth: int = 10) -> dict:
         "total_paths": total_paths,
         "unique_paths": unique_paths,
     }
+
+
+# ---------------------------------------------------------------------------
+# Layer 1.3 — Morphology classification
+# ---------------------------------------------------------------------------
+
+def classify_topology(stats: dict) -> str:
+    """Classify session topology into a structural phenotype.
+
+    Heuristic-only, no semantic interpretation.  Uses ``compute_stats`` output.
+
+    Phenotypes:
+
+    ``dominant_chain``
+        Single (or near-single) root, deep relative to size, low branching.
+        Typical of linear fix-and-test loops.
+
+    ``multi_root_exploration``
+        Many roots, shallow depth, low reuse.
+        Typical of reading/searching/discovery behaviour.
+
+    ``fan_out_heavy``
+        One or few roots with wide branching, moderate depth.
+        Typical of parallel task spawning.
+
+    ``collapsed_repair``
+        Significant fan-in / multi-parent convergence.
+        Typical of iterative refinement converging on a target.
+
+    ``mixed``
+        No phenotype clearly dominates.
+    """
+    rc = stats.get("root_count", 0)
+    mc = stats.get("event_count", 1)
+    depth = stats.get("max_depth", 0)
+    avg_depth = stats.get("avg_depth", 0.0)
+    fan_out_avg = stats.get("fan_out_avg", 0.0)
+    fan_out_max = stats.get("fan_out_max", 0)
+    multi_parent = stats.get("multi_parent_count", 0)
+
+    depth_ratio = depth / mc if mc > 0 else 0
+
+    # dominant_chain — few roots, deep relative to size
+    if rc <= 2 and depth_ratio > 0.3 and fan_out_avg < 1.5:
+        return "dominant_chain"
+
+    # fan_out_heavy — wide branching from few roots
+    if rc <= 3 and fan_out_max >= 4 and fan_out_avg >= 1.5:
+        return "fan_out_heavy"
+
+    # collapsed_repair — significant multi-parent convergence
+    if multi_parent >= 3 and multi_parent / mc > 0.05:
+        return "collapsed_repair"
+
+    # multi_root_exploration — many roots, shallow
+    if rc >= 5 and avg_depth < 3:
+        return "multi_root_exploration"
+
+    return "mixed"
+
+
+TOPOLOGY_PHENOTYPES = {
+    "dominant_chain": "Single-chain deep topology, low branching",
+    "multi_root_exploration": "Many shallow roots, exploration-like",
+    "fan_out_heavy": "Wide branching from few roots",
+    "collapsed_repair": "Significant multi-parent convergence",
+    "mixed": "No dominant structural phenotype",
+}
 
 
 # ---------------------------------------------------------------------------
