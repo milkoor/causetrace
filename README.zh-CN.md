@@ -5,8 +5,6 @@
 [![CI](https://github.com/milkoor/causetrace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milkoor/causetrace/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/causetrace.svg)](https://pypi.org/project/causetrace/)
 
-> **发布状态：** `v0.1.3` 已在 GitHub 提供。PyPI 在本仓库的 Trusted
-> Publisher 注册完成前仍提供 `0.1.2`。
 
 **causetrace** 是面向 AI coding agents 的 Python tracing 与
 observability 工具，支持 Claude Code、Codex CLI、OpenCode、Aider、
@@ -148,7 +146,7 @@ causetrace aider -- --model gpt-4 --yes "修复这个bug"
 ## 快速开始
 
 ```bash
-pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.1.3"
+pip install causetrace
 
 # 创建一个已保存的示例 trace，并直接查看因果树
 causetrace demo
@@ -156,7 +154,6 @@ causetrace demo
 
 `demo` 会输出生成的 session ID 以及可直接执行的 `graph`、`why` 和
 `stats` 命令，无需预先配置 agent 或下载 fixture。
-PyPI publisher 激活后，安装命令可简化为 `pip install causetrace`。
 
 ### 接入 Claude Code
 
