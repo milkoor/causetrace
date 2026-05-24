@@ -8,6 +8,7 @@ venv/
 
 # causetrace runtime data
 *.jsonl
+!tests/fixtures/dags/*.jsonl
 *.pre
 .causetrace/
 

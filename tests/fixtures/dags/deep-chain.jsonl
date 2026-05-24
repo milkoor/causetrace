@@ -1,0 +1,10 @@
+{"duration_ms": null, "event_id": "n000", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "n001", "parent_event_id": "n000", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}
+{"duration_ms": null, "event_id": "n002", "parent_event_id": "n001", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "n003", "parent_event_id": "n002", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}
+{"duration_ms": null, "event_id": "n004", "parent_event_id": "n003", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "n005", "parent_event_id": "n004", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}
+{"duration_ms": null, "event_id": "n006", "parent_event_id": "n005", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "n007", "parent_event_id": "n006", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}
+{"duration_ms": null, "event_id": "n008", "parent_event_id": "n007", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "n009", "parent_event_id": "n008", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}

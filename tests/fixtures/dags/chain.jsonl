@@ -1,0 +1,4 @@
+{"duration_ms": null, "event_id": "root", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "a", "parent_event_id": "root", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Bash", "tool_output": null}
+{"duration_ms": null, "event_id": "b", "parent_event_id": "a", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Edit", "tool_output": null}
+{"duration_ms": null, "event_id": "c", "parent_event_id": "b", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:00", "tool_input": {}, "tool_name": "Read", "tool_output": null}

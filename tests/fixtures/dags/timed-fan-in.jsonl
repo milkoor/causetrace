@@ -1,0 +1,4 @@
+{"duration_ms": null, "event_id": "r1", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:01", "tool_input": {}, "tool_name": "Read", "tool_output": null}
+{"duration_ms": null, "event_id": "r2", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:02", "tool_input": {}, "tool_name": "Grep", "tool_output": null}
+{"duration_ms": null, "event_id": "w1", "parent_event_id": "r1,r2", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:03", "tool_input": {}, "tool_name": "Write", "tool_output": null}
+{"duration_ms": null, "event_id": "e1", "parent_event_id": "w1", "schema_version": "0.1", "timestamp": "2026-01-01T00:00:04", "tool_input": {}, "tool_name": "Edit", "tool_output": null}
