@@ -1,6 +1,11 @@
 # causetrace
 
-> [中文](README.zh-CN.md) • [CI](https://github.com/milkoor/causetrace/actions) • [PyPI](https://pypi.org/project/causetrace/) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
+> [中文](README.zh-CN.md) • [CI](https://github.com/milkoor/causetrace/actions) • [PyPI](https://pypi.org/project/causetrace/) • [Changelog](CHANGELOG.md) • [Roadmap](ROADMAP.md) • [Discussions](https://github.com/milkoor/causetrace/discussions) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
+
+[![CI](https://github.com/milkoor/causetrace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milkoor/causetrace/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/causetrace.svg)](https://pypi.org/project/causetrace/)
+[![Python](https://img.shields.io/pypi/pyversions/causetrace.svg)](https://pypi.org/project/causetrace/)
+[![License](https://img.shields.io/github/license/milkoor/causetrace.svg)](LICENSE)
 
 **causetrace** is a Python tracing and observability tool for AI coding agents
 such as Claude Code, Codex CLI, OpenCode, Aider, Continue.dev, and GitHub
@@ -19,6 +24,8 @@ explanation instead of relying on flat timelines.
 - Debug Claude Code hooks and Codex CLI rollout sessions from causal context.
 - Compare agent sessions by topology, transitions, and critical paths.
 - Collect sanitized runtime traces for agent observability research.
+
+![From flat tool logs to causal explanation](docs/assets/demo-flow.svg)
 
 ---
 
@@ -142,33 +149,25 @@ Usage notes:
 ```bash
 pip install causetrace
 
-# Run a demo with sample data
-causetrace timeline ses_10d2f16e
-causetrace tree    ses_10d2f16e
-causetrace replay  ses_10d2f16e --summary
-causetrace why     ses_10d2f16e <event_id>
+# Create a saved sample trace and immediately see the causal tree
+causetrace demo
 ```
+
+`demo` prints the generated session ID plus ready-to-run `graph`, `why`, and
+`stats` commands. No agent configuration or fixture download is required.
 
 ### Hook up Claude Code
 
-Add to `~/.claude/settings.json` to start recording every Claude Code session automatically.
+Install recording hooks while preserving existing Claude Code settings:
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [{ "matcher": "*", "hooks": [{
-      "type": "command",
-      "command": "python3 /path/to/causetrace/hooks/claude_code.py",
-      "timeout": 5
-    }]}],
-    "PostToolUse": [{ "matcher": "*", "hooks": [{
-      "type": "command",
-      "command": "python3 /path/to/causetrace/hooks/claude_code.py",
-      "timeout": 5
-    }]}]
-  }
-}
+```bash
+causetrace install-claude-hook
+causetrace doctor
 ```
+
+The installer writes `~/.claude/settings.json` and creates a
+`settings.json.causetrace.bak` backup before its first change. Remove only
+causetrace hooks with `causetrace uninstall-claude-hook`.
 
 ### Scan OpenCode logs
 
@@ -194,6 +193,12 @@ causetrace compare <session_a> <session_b>
 Structural analysis is session-local: a parent ID not present in the loaded
 session marks a local boundary, so its child is analyzed as a local root.
 `validate` still reports missing non-`root_` parent references as warnings.
+
+### Validated Cases
+
+- [Codex CLI rollout parsing case study](docs/case-studies/codex-rollout-parser.md)
+- [Claude Code hook causality failure observation](examples/traces/failures/observations-claude-code-hooks.md)
+- [Runtime research notes](docs/research-notes/README.md)
 
 ---
 
@@ -246,6 +251,9 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace annotate <id> [...]` | Store sidecar task/source/result metadata |
 | `causetrace compare <a> <b>` | Compare topology and transitions across sessions |
 | `causetrace doctor` | Diagnose agent configuration and data sources |
+| `causetrace demo` | Create and inspect a self-contained sample trace |
+| `causetrace install-claude-hook` | Configure Claude Code capture hooks safely |
+| `causetrace uninstall-claude-hook` | Remove only causetrace-managed hooks |
 
 ---
 

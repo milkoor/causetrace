@@ -20,6 +20,13 @@ $ causetrace tree ses_10d2f16e
       └─ Bash(pytest -x)
 ```
 
+Try it without configuring an agent:
+
+```bash
+pip install causetrace
+causetrace demo
+```
+
 **Supported agents:**
 - Claude Code (hooks — high-fidelity tool sequence, without turn boundaries)
 - OpenCode (log tail + DB enrich)
@@ -30,6 +37,7 @@ $ causetrace tree ses_10d2f16e
 - `causetrace replay <session>` — replay the entire session with provenance
 - `causetrace why <session> <event>` — trace a single event back to root cause
 - `causetrace doctor` — diagnose which agents are configured correctly
+- `causetrace install-claude-hook` — configure Claude Code recording with a settings backup
 - Enrich commands for Claude Code / OpenCode / Codex CLI that extract reasoning blocks + tool calls
 
 Zero external dependencies. Data stored as append-only JSONL.

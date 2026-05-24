@@ -147,3 +147,12 @@ https://github.com/milkoor/causetrace/blob/main/tools/codex_deepseek_proxy.py
 ---
 
 *This is the second in a series about coding agent runtime observability. First post: [Coding agents produce causal DAGs, not logs](https://dev.to/milkoor/coding-agents-produce-causal-dags-not-logs-ne6).*
+
+Try a self-contained causal trace locally:
+
+```bash
+pip install causetrace
+causetrace demo
+```
+
+Source and releases: https://github.com/milkoor/causetrace

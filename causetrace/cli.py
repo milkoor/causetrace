@@ -23,6 +23,7 @@ from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
+from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
 
 try:
     from importlib.metadata import version as _import_version
@@ -32,7 +33,7 @@ except Exception:
         from importlib.metadata import version as _import_version
         _CAUSETRACE_VERSION = _import_version("causetrace")
     except Exception:
-        _CAUSETRACE_VERSION = "0.1.2"
+        _CAUSETRACE_VERSION = "0.1.3"
 
 
 def _check_result(label: str, ok: bool, detail: str = "") -> tuple[bool, str, str]:
@@ -238,6 +239,14 @@ def cli(argv: list[str] | None = None) -> None:
     p_cmp.add_argument("--top", type=int, default=8, help="Top N transitions per session (default: 8)")
 
     sub.add_parser("doctor", help="Diagnose agent configuration and data sources")
+
+    sub.add_parser("demo", help="Create and display a saved demo causal trace")
+
+    p_hook_install = sub.add_parser("install-claude-hook", help="Install Claude Code recording hooks")
+    p_hook_install.add_argument("--settings", type=Path, help="Claude settings path override")
+
+    p_hook_remove = sub.add_parser("uninstall-claude-hook", help="Remove causetrace Claude Code hooks")
+    p_hook_remove.add_argument("--settings", type=Path, help="Claude settings path override")
 
     args = parser.parse_args(argv)
     store = JSONStore()
@@ -565,6 +574,34 @@ def cli(argv: list[str] | None = None) -> None:
             if detail:
                 print(f"     {detail}")
         print()
+
+    elif args.command == "demo":
+        sid, events, target_id = create_demo_session(store)
+        print(f"Demo session saved: {sid}  ({len(events)} events, causal tree)\n")
+        TimelineRenderer.print_tree(events)
+        print("\nInspect the same trace:")
+        print(f"  causetrace graph {sid}")
+        print(f"  causetrace why {sid} {target_id}")
+        print(f"  causetrace stats {sid}")
+
+    elif args.command == "install-claude-hook":
+        try:
+            path, changed = install_claude_hook(args.settings)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            sys.exit(1)
+        verb = "Installed" if changed else "Already installed"
+        print(f"{verb}: causetrace Claude Code hooks in {path}")
+        print("Run `causetrace doctor` after your next Claude Code session.")
+
+    elif args.command == "uninstall-claude-hook":
+        try:
+            path, changed = uninstall_claude_hook(args.settings)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            sys.exit(1)
+        verb = "Removed" if changed else "No causetrace hooks found"
+        print(f"{verb}: {path}")
 
     elif args.command == "validate":
         sid = _resolve_sid(args.session_id)

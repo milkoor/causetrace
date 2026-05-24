@@ -5,6 +5,9 @@ Usage:
     # Publish a blog post to dev.to
     python3 tools/promote.py devto-post docs/promotion/blog.md --api-key "$DEVTO_KEY"
 
+    # Update an existing dev.to article after reviewing the source draft
+    python3 tools/promote.py devto-update <article_id> docs/promotion/blog.md --api-key "$DEVTO_KEY"
+
     # Format tweet text (check length, strip ANSI)
     python3 tools/promote.py tweet "Your tweet text here"
 
@@ -27,8 +30,50 @@ import sys
 from pathlib import Path
 
 
+def _devto_article(md_path: Path) -> dict:
+    """Build a dev.to article payload from a Markdown source file."""
+    content = md_path.read_text()
+    title = ""
+    tags = ["opensource", "ai"]
+    description = ""
+
+    for line in content.splitlines():
+        m = re.match(r"^#\s+(.+)$", line)
+        if m:
+            title = m.group(1).strip()
+            break
+
+    if not title:
+        title = md_path.stem.replace("_", " ").replace("-", " ").title()
+
+    for line in content.splitlines():
+        if line.strip() and not line.startswith("#") and not line.startswith("---"):
+            description = line.strip()[:150]
+            break
+
+    return {
+        "title": title,
+        "body_markdown": content,
+        "tags": tags[:4],
+        "description": description or title,
+        "published": True,
+    }
+
+
+def _api_key(args: list[str]) -> str:
+    api_key = os.environ.get("DEVTO_API_KEY", "")
+    for i, value in enumerate(args):
+        if value == "--api-key" and i + 1 < len(args):
+            api_key = args[i + 1]
+    if not api_key:
+        print("Error: DEVTO_API_KEY not set. Provide via --api-key or DEVTO_API_KEY env var.",
+              file=sys.stderr)
+        sys.exit(1)
+    return api_key
+
+
 def cmd_devto_post(args: list[str]) -> None:
-    """Publish a markdown file to dev.to."""
+    """Publish a Markdown file as a new dev.to article."""
     import httpx  # only needed for devto-post
     if not args:
         print("Usage: promote.py devto-post <markdown_file> [--api-key KEY]", file=sys.stderr)
@@ -39,47 +84,8 @@ def cmd_devto_post(args: list[str]) -> None:
         print(f"File not found: {md_path}", file=sys.stderr)
         sys.exit(1)
 
-    api_key = os.environ.get("DEVTO_API_KEY", "")
-    for i, a in enumerate(args[1:], 1):
-        if a == "--api-key" and i + 1 < len(args):
-            api_key = args[i + 1]
-
-    if not api_key:
-        print("Error: DEVTO_API_KEY not set. Provide via --api-key or DEVTO_API_KEY env var.",
-              file=sys.stderr)
-        sys.exit(1)
-
-    # Parse frontmatter if present
-    content = md_path.read_text()
-    title = ""
-    tags = ["opensource", "ai"]
-    description = ""
-
-    # Try to extract title from first heading
-    for line in content.splitlines():
-        m = re.match(r"^#\s+(.+)$", line)
-        if m:
-            title = m.group(1).strip()
-            break
-
-    if not title:
-        title = md_path.stem.replace("_", " ").replace("-", " ").title()
-
-    # Try to extract description from second paragraph
-    para_count = 0
-    for line in content.splitlines():
-        if line.strip() and not line.startswith("#") and not line.startswith("---"):
-            description = line.strip()[:150]
-            break
-
-    # Build request
-    article = {
-        "title": title,
-        "body_markdown": content,
-        "tags": tags[:4],  # dev.to allows max 4 tags
-        "description": description or title,
-        "published": True,
-    }
+    api_key = _api_key(args[1:])
+    article = _devto_article(md_path)
 
     resp = httpx.post(
         "https://dev.to/api/articles",
@@ -96,6 +102,33 @@ def cmd_devto_post(args: list[str]) -> None:
     result = resp.json()
     url = result.get("url", "")
     print(f"Published: {url}")
+
+
+def cmd_devto_update(args: list[str]) -> None:
+    """Update an existing dev.to article from a Markdown source file."""
+    import httpx
+    if len(args) < 2:
+        print("Usage: promote.py devto-update <article_id> <markdown_file> [--api-key KEY]",
+              file=sys.stderr)
+        sys.exit(1)
+
+    article_id, path_value = args[0], args[1]
+    md_path = Path(path_value)
+    if not article_id.isdigit() or not md_path.exists():
+        print("Article ID must be numeric and the Markdown file must exist.", file=sys.stderr)
+        sys.exit(1)
+
+    resp = httpx.put(
+        f"https://dev.to/api/articles/{article_id}",
+        headers={"api-key": _api_key(args[2:]), "content-type": "application/json"},
+        json={"article": _devto_article(md_path)},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        print(f"Error: dev.to API returned {resp.status_code}", file=sys.stderr)
+        print(resp.text[:500], file=sys.stderr)
+        sys.exit(1)
+    print(f"Updated: {resp.json().get('url', '')}")
 
 
 def cmd_tweet(args: list[str]) -> None:
@@ -150,7 +183,7 @@ def cmd_checklist(args: list[str]) -> None:
     print("- [ ] Update version in `causetrace/__init__.py`")
     print("- [ ] Update `pyproject.toml`")
     print("- [ ] Run all tests: `python -m pytest tests/ -v`")
-    print("- [ ] Run demo: `python demo/run_demo.py`")
+    print("- [ ] Run demo: `causetrace demo`")
     print("- [ ] Check CI status")
     print()
     print("## Content")
@@ -192,6 +225,7 @@ def main() -> None:
 
     commands = {
         "devto-post": cmd_devto_post,
+        "devto-update": cmd_devto_update,
         "tweet": cmd_tweet,
         "hn-strip": cmd_hn_strip,
         "checklist": cmd_checklist,

@@ -1,6 +1,6 @@
 # Failure #001: Claude Code hook — broken causal linking
 
-**Trace**: `claude-code-hook-bug-session.jsonl` (189 events, 81 min)
+**Trace**: source session retained locally (189 events, 81 min; not published because it includes local paths)
 **Root cause**: The Claude Code hook bridge created a new `TraceRecorder` per PostToolUse
   and never passed `parent_event_id` to `record_call()`.
 
@@ -38,3 +38,7 @@ causal structure. Future sessions will have proper parent→child chains.
 The hook bridge was never tested end-to-end. The unit tests create chains via
 `TraceRecorder.record_call()` but never tested the hook JSON roundtrip.
 Add an integration test for the hook stdin/stdout flow.
+
+For a public, sanitized causal trace that exercises the current CLI, run
+`causetrace demo` and inspect the generated session with `tree`, `graph`, and
+`why`.

@@ -19,7 +19,7 @@
 > Coding agents don't generate logs.
 > They generate causal graphs.
 
-Attach: screenshot of `causetrace tree` output
+Attach: `docs/assets/demo-flow.svg` or a screenshot of `causetrace demo` output
 
 ---
 
@@ -39,7 +39,7 @@ Attach: screenshot of `causetrace tree` output
 > It read documentation first, then applied the change.
 > The flat log told me *when*. The causal trace told me *why*.
 
-Attach: screenshot of `causetrace why` output
+Attach: `docs/assets/demo-flow.svg` or a screenshot of `causetrace why` output
 
 ---
 
@@ -62,6 +62,18 @@ Attach: screenshot of `causetrace why` output
 > Have you ever needed to trace *why* an agent made a specific edit, and couldn't figure it out from the chat log?
 >
 > Curious how common this debugging pain actually is.
+
+## Post 5 — Runnable release
+
+> causetrace v0.1.3 now has a zero-setup demo:
+>
+> `pip install causetrace`
+> `causetrace demo`
+>
+> It creates a local causal DAG, renders the tree, and prints commands to
+> inspect fan-in and root-cause paths.
+>
+> https://github.com/milkoor/causetrace
 
 ---
 

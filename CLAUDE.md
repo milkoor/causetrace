@@ -23,8 +23,8 @@ python -m pytest tests/ -v
 # Run a single test
 python -m pytest tests/test_invariants.py::test_causality_chain_links -v
 
-# Run demo
-python demo/run_demo.py
+# Run the installed first-run path
+causetrace demo
 ```
 
 ## CLI
@@ -58,6 +58,9 @@ causetrace patterns [session] --csv       # Causal transitions as CSV
 causetrace validate [session]             # Check JSONL/references/cycles
 causetrace annotate <session> [...]       # Store sidecar metadata
 causetrace compare <a> <b>                # Compare session topology
+causetrace demo                            # Create an inspectable sample trace
+causetrace install-claude-hook             # Configure recording hooks safely
+causetrace uninstall-claude-hook           # Remove only managed hooks
 ```
 
 ## Architecture
@@ -66,6 +69,7 @@ causetrace compare <a> <b>                # Compare session topology
 - **`causetrace/analysis.py`** — Session analysis primitives (structural + pattern). Layer 1: graph/path/topology metrics (compute_stats, find_roots, longest_path). Layer 2: structural patterns without semantic naming (detect_repeated_paths, detect_common_transitions, detect_fan_in_patterns, detect_branch_collapse).
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
 - **`causetrace/cli.py`** — argparse-based CLI dispatching capture, analysis, annotation, and diagnostic commands.
+- **`causetrace/onboarding.py`** — Self-contained demo session generation and safe Claude Code hook settings updates.
 - **`causetrace/hooks/`** — Agent-specific bridges and tailers:
   - `claude_code.py` — Claude Code PreToolUse/PostToolUse hook bridge
   - `claude_project_parser.py` — Claude Code project session parser (enrich)
@@ -80,6 +84,7 @@ causetrace compare <a> <b>                # Compare session topology
 - **`tests/test_enrich.py`** — Tests for Claude Code project session parser.
 - **`tests/test_opencode_enrich.py`** — Tests for OpenCode DB session parser.
 - **`tests/test_dag_fixtures.py`** — Topology fixtures and session-local analysis regression tests.
+- **`tests/test_onboarding.py`** — First-run demo and Claude Code configuration regression tests.
 
 ## Runtime principles
 
@@ -97,7 +102,7 @@ When asked to promote (major update, new release, technical discovery), execute 
 
 ### 0. Pre-flight check
 - Run all tests: `python -m pytest tests/ -v`
-- Run demo: `python demo/run_demo.py`
+- Run demo: `causetrace demo`
 - Run `python3 tools/promote.py checklist <version> "description"` to generate full checklist
 
 ### 1. Write the story (always start here)

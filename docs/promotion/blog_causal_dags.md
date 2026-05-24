@@ -151,11 +151,7 @@ The storage model is intentionally minimal: append-only JSONL per session, zero 
 
 ```bash
 pip install causetrace
-
-causetrace tree ses_10d2f16e    # causal tree
-causetrace graph ses_3e23bcc8   # multi-parent DAG
-causetrace why ses_10d2f16e <e> # root cause trace
-causetrace replay ses_10d2f16e  # replay with provenance
+causetrace demo                 # saved trace, tree, and follow-up commands
 causetrace doctor               # check agent configuration
 ```
 
@@ -165,5 +161,5 @@ But the point of this post isn't the tool. It's the abstraction: **coding agents
 
 ---
 
-*Discuss on [Hacker News](https://news.ycombinator.com/item?id=48132377)*
+*Try the runnable demo: `pip install causetrace && causetrace demo`.*
 *GitHub: [https://github.com/milkoor/causetrace](https://github.com/milkoor/causetrace)*

@@ -19,3 +19,10 @@
 6. 开源工具 causetrace（末尾一笔带过，不占主体）
 
 **核心主张：** 不是推广工具，是分享一个发现——coding agent 的运行时不适合用日志抽象，因果图是更好的原语。
+
+**文章末尾可复现入口：**
+
+```bash
+pip install causetrace
+causetrace demo
+```

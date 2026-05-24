@@ -11,7 +11,7 @@ pip install -e ".[test]"          # Editable install plus pytest
 python -m pytest tests/ -v        # Run the full test suite
 python -m pytest tests/test_invariants.py -v  # Check runtime invariants
 python -m pytest tests/test_dag_fixtures.py -v # Check DAG analysis behavior
-python demo/run_demo.py           # Exercise the package with sample data
+causetrace demo                   # Exercise the installed first-run path
 causetrace doctor                 # Diagnose local runtime data sources
 ```
 
@@ -23,7 +23,7 @@ Target Python 3.10+ and use four-space indentation. Follow existing conventions:
 
 ## Testing Guidelines
 
-Tests use `pytest` and follow the `tests/test_*.py` pattern. Add parser or hook coverage in the matching module. Topology changes require DAG-fixture regression tests, including external-parent boundaries where relevant. Analysis is session-local: parents absent from the loaded session do not create graph nodes.
+Tests use `pytest` and follow the `tests/test_*.py` pattern. Add parser or hook coverage in the matching module; first-run configuration belongs in `tests/test_onboarding.py`. Topology changes require DAG-fixture regression tests, including external-parent boundaries where relevant. Analysis is session-local: parents absent from the loaded session do not create graph nodes.
 
 ## Runtime Semantics and Trace Data
 

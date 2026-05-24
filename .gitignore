@@ -16,6 +16,7 @@ venv/
 agenttrace
 
 # Build artifacts
+build/
 dist/
 *.egg
 

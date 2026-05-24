@@ -49,17 +49,19 @@ git clone https://github.com/milkoor/causetrace.git
 cd causetrace
 pip install -e ".[test]"
 python -m pytest tests/ -v
+causetrace demo
 ```
 
 Changes to causal topology or analysis must add focused coverage in
 `tests/test_dag_fixtures.py`; storage, serialization, validation, and CLI
-contracts belong in `tests/test_invariants.py`.
+contracts belong in `tests/test_invariants.py`. First-run and configuration
+flows belong in `tests/test_onboarding.py`.
 
 ## Publishing to PyPI
 
 Maintainer only. To publish a new version:
 
-1. Update `version` in `pyproject.toml` and `__version__` in `causetrace/__init__.py`
+1. Update `version` in `pyproject.toml`, `__version__` in `causetrace/__init__.py`, and `CHANGELOG.md`
 2. Tag the release: `git tag v<version> && git push origin --tags`
 3. The [publish workflow](.github/workflows/publish.yml) will build and upload automatically
 

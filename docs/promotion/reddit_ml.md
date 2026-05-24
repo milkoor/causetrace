@@ -32,3 +32,6 @@ Would appreciate feedback from anyone working on agent observability or tool-use
 
 GitHub: https://github.com/milkoor/causetrace
 PyPI: `pip install causetrace`
+
+Runnable first look: `causetrace demo` creates a local, inspectable causal DAG
+without requiring any agent credentials or trace data.

@@ -1,6 +1,9 @@
 # causetrace
 
-> [English](README.md) • [贡献指南](CONTRIBUTING.md) • [安全报告](SECURITY.md)
+> [English](README.md) • [PyPI](https://pypi.org/project/causetrace/) • [变更日志](CHANGELOG.md) • [路线图](ROADMAP.md) • [讨论区](https://github.com/milkoor/causetrace/discussions) • [贡献指南](CONTRIBUTING.md) • [安全报告](SECURITY.md)
+
+[![CI](https://github.com/milkoor/causetrace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/milkoor/causetrace/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/causetrace.svg)](https://pypi.org/project/causetrace/)
 
 **causetrace** 是面向 AI coding agents 的 Python tracing 与
 observability 工具，支持 Claude Code、Codex CLI、OpenCode、Aider、
@@ -18,6 +21,8 @@ Continue.dev 和 GitHub Copilot。它捕获工具调用并链接成因果树与 
 - 基于因果上下文调试 Claude Code hooks 与 Codex CLI rollout 会话。
 - 按拓扑、工具转移和关键路径比较不同 agent 会话。
 - 为 agent observability 研究收集已脱敏的运行时 trace。
+
+![从扁平工具日志到因果解释](docs/assets/demo-flow.svg)
 
 ---
 
@@ -142,33 +147,24 @@ causetrace aider -- --model gpt-4 --yes "修复这个bug"
 ```bash
 pip install causetrace
 
-# 运行示例数据演示
-causetrace timeline ses_10d2f16e
-causetrace tree    ses_10d2f16e
-causetrace replay  ses_10d2f16e --summary
-causetrace why     ses_10d2f16e <event_id>
+# 创建一个已保存的示例 trace，并直接查看因果树
+causetrace demo
 ```
+
+`demo` 会输出生成的 session ID 以及可直接执行的 `graph`、`why` 和
+`stats` 命令，无需预先配置 agent 或下载 fixture。
 
 ### 接入 Claude Code
 
-添加到 `~/.claude/settings.json` 即可自动记录每个 Claude Code 会话。
+在保留已有 Claude Code 配置的前提下安装记录 hooks：
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [{ "matcher": "*", "hooks": [{
-      "type": "command",
-      "command": "python3 /path/to/causetrace/hooks/claude_code.py",
-      "timeout": 5
-    }]}],
-    "PostToolUse": [{ "matcher": "*", "hooks": [{
-      "type": "command",
-      "command": "python3 /path/to/causetrace/hooks/claude_code.py",
-      "timeout": 5
-    }]}]
-  }
-}
+```bash
+causetrace install-claude-hook
+causetrace doctor
 ```
+
+安装器首次修改前会创建 `~/.claude/settings.json.causetrace.bak` 备份。
+运行 `causetrace uninstall-claude-hook` 可只移除 causetrace 管理的 hooks。
 
 ### 扫描 OpenCode 日志
 
@@ -193,6 +189,12 @@ causetrace compare <session_a> <session_b>
 
 结构分析以当前加载的会话为边界：若父 ID 不在本会话内，其子事件会作为
 局部根节点参与分析。`validate` 仍会将非 `root_` 的缺失父引用报告为警告。
+
+### 已验证案例
+
+- [Codex CLI rollout 解析案例](docs/case-studies/codex-rollout-parser.md)
+- [Claude Code hook 因果链失效观察](examples/traces/failures/observations-claude-code-hooks.md)
+- [运行时研究笔记](docs/research-notes/README.md)
 
 ---
 
@@ -245,6 +247,9 @@ causetrace compare <session_a> <session_b>
 | `causetrace annotate <id> [...]` | 保存任务/来源/结果侧车元数据 |
 | `causetrace compare <a> <b>` | 对比两个会话的拓扑和转移 |
 | `causetrace doctor` | 诊断 Agent 配置和数据源状态 |
+| `causetrace demo` | 创建并查看自包含示例 trace |
+| `causetrace install-claude-hook` | 安全配置 Claude Code 捕获 hooks |
+| `causetrace uninstall-claude-hook` | 只移除 causetrace 管理的 hooks |
 
 ---
 
