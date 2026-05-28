@@ -13,10 +13,12 @@ from .analysis import (
     compute_stats, find_roots, longest_path, fan_out_distribution,
     connected_components, detect_repeated_paths, detect_common_transitions,
     detect_fan_in_patterns, detect_branch_collapse, classify_topology,
-    detect_topology_shift, TOPOLOGY_PHENOTYPES,
+    detect_topology_shift, TOPOLOGY_PHENOTYPES, detect_branch_persistence,
+    compute_frontier_width, detect_retry_density, root_spawning_rate,
 )
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
+from .corpus import export_dataset, group_labeled_sessions, list_corpus_records, snapshot_corpus
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
@@ -24,7 +26,9 @@ from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
+from .metadata import load_metadata, merge_metadata
 from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
+from .report import generate_report
 
 try:
     from importlib.metadata import version as _import_version
@@ -237,16 +241,47 @@ def cli(argv: list[str] | None = None) -> None:
     p_an.add_argument("--list", action="store_true", dest="_list", help="List all annotated sessions")
     p_an.add_argument("--unannotated", action="store_true", help="List sessions without annotations")
 
-    p_cr = sub.add_parser("corpus", help="Query and filter session corpus")
+    p_md = sub.add_parser("metadata", help="Show standardized session metadata")
+    p_md.add_argument("session_id", help="Session ID")
+    p_md.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_ms = sub.add_parser("metadata-set", help="Set standardized session metadata")
+    p_ms.add_argument("session_id", help="Session ID")
+    p_ms.add_argument("--runtime", help="Runtime name (e.g. claude, codex, aider)")
+    p_ms.add_argument("--model", help="Model name")
+    p_ms.add_argument("--task-type", choices=list(TASK_TYPES), help="Task category")
+    p_ms.add_argument("--task-source", choices=list(SOURCES), help="Task/data source")
+    p_ms.add_argument("--repo-language", help="Repository primary language")
+    p_ms.add_argument("--repo-size", help="Repository size bucket or count")
+    p_ms.add_argument("--success", type=_parse_cli_bool, help="true/false")
+    p_ms.add_argument("--duration", type=float, help="Session duration in seconds")
+    p_ms.add_argument("--human-intervention", type=_parse_cli_bool, help="true/false")
+
+    p_cr = sub.add_parser("corpus", help="Query, snapshot, and export session corpus")
     p_cr.add_argument("--runtime", help="Filter by runtime (e.g. claude, codex, opencode)")
     p_cr.add_argument("--task", choices=list(TASK_TYPES), help="Filter by task type")
     p_cr.add_argument("--topology", choices=list(TOPOLOGY_PHENOTYPES), help="Filter by topology phenotype")
     p_cr.add_argument("--source", choices=list(SOURCES), help="Filter by session source")
+    p_cr_sub = p_cr.add_subparsers(dest="corpus_command")
+    p_cr_snapshot = p_cr_sub.add_parser("snapshot", help="Create a reproducible corpus snapshot")
+    p_cr_snapshot.add_argument("--name", help="Snapshot name (default: timestamp)")
+    p_cr_snapshot.add_argument("--output-dir", help="Corpus root directory (default: ~/.causetrace/corpus)")
+    p_cr_export = p_cr_sub.add_parser("export", help="Export corpus dataset manifest as JSON")
+    p_cr_export.add_argument("--output", "-o", help="Output file (default: stdout)")
+    p_cr_groups = p_cr_sub.add_parser("groups", help="Show labeled session groups")
+    p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
     p_cmp.add_argument("session_b", help="Second session ID")
     p_cmp.add_argument("--top", type=int, default=8, help="Top N transitions per session (default: 8)")
+    p_cmp.add_argument("--window", type=int, default=50, help="Window size for root spawning comparison")
+
+    p_rp = sub.add_parser("report", help="Generate a markdown research report template")
+    p_rp.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_rp.add_argument("--window", type=int, default=50, help="Window size for drift analysis")
+    p_rp.add_argument("--top", type=int, default=10, help="Top N roots/transitions")
+    p_rp.add_argument("--output", "-o", help="Write report to file")
 
     sub.add_parser("doctor", help="Diagnose agent configuration and data sources")
 
@@ -577,11 +612,20 @@ def cli(argv: list[str] | None = None) -> None:
     elif args.command == "annotate":
         _handle_annotate(store, args)
 
+    elif args.command == "metadata":
+        _handle_metadata(args)
+
+    elif args.command == "metadata-set":
+        _handle_metadata_set(args)
+
     elif args.command == "corpus":
         _handle_corpus(store, args)
 
     elif args.command == "compare":
         _handle_compare(store, args)
+
+    elif args.command == "report":
+        _handle_report(store, args, _resolve_sid)
 
     elif args.command == "shifts":
         sid = _resolve_sid(args.session_id)
@@ -852,6 +896,15 @@ def _fmt_duration(seconds: float) -> str:
     return f"{m}m{s}s"
 
 
+def _parse_cli_bool(value: str) -> bool:
+    lowered = value.lower()
+    if lowered in ("true", "1", "yes", "y"):
+        return True
+    if lowered in ("false", "0", "no", "n"):
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
+
 def _freq_bar(tool_freq: dict, top_n: int) -> str:
     """Compact tool frequency bar, e.g. Bash×14, Edit×8, ..."""
     items = list(tool_freq.items())[:top_n]
@@ -919,36 +972,95 @@ def _handle_annotate(store, args) -> None:
         print(f"  {k}: {v}")
 
 
+def _handle_metadata(args) -> None:
+    """Handle ``causetrace metadata``."""
+    meta = load_metadata(args.session_id)
+    data = meta.to_dict()
+    if args.json:
+        json.dump({"session_id": args.session_id, "metadata": data}, sys.stdout, indent=2)
+        print()
+        return
+    if not data:
+        print(f"No metadata for {args.session_id}.")
+        return
+    print(f"Metadata for {args.session_id}:")
+    for key, value in data.items():
+        print(f"  {key}: {value}")
+
+
+def _handle_metadata_set(args) -> None:
+    """Handle ``causetrace metadata-set``."""
+    updates = {
+        "runtime": args.runtime,
+        "model": args.model,
+        "task_type": args.task_type,
+        "task_source": args.task_source,
+        "repo_language": args.repo_language,
+        "repo_size": args.repo_size,
+        "success": args.success,
+        "duration": args.duration,
+        "human_intervention": args.human_intervention,
+    }
+    updates = {k: v for k, v in updates.items() if v is not None}
+    if not updates:
+        print("No metadata fields provided.")
+        sys.exit(1)
+    try:
+        meta = merge_metadata(args.session_id, updates)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    print(f"Metadata saved for {args.session_id}:")
+    for key, value in meta.to_dict().items():
+        print(f"  {key}: {value}")
+
+
 def _handle_corpus(store, args) -> None:
     """Handle ``causetrace corpus``."""
-    sids = store.list_sessions()
-    if not sids:
+    if args.corpus_command == "snapshot":
+        result = snapshot_corpus(store, output_dir=args.output_dir, name=args.name)
+        print(f"Snapshot: {result['snapshot_dir']}")
+        print(f"  Sessions: {result['session_count']}")
+        return
+
+    if args.corpus_command == "export":
+        dataset = export_dataset(store, output=args.output)
+        if args.output:
+            print(f"Exported {dataset['session_count']} session(s) to {args.output}")
+        else:
+            json.dump(dataset, sys.stdout, indent=2)
+            print()
+        return
+
+    records = list_corpus_records(store)
+    if not records:
         print("No sessions found.")
         return
 
+    if args.corpus_command == "groups":
+        groups = group_labeled_sessions(records, label=args.label)
+        print(f"Corpus groups by {args.label}:")
+        for label, session_ids in sorted(groups.items()):
+            print(f"  {label}: {len(session_ids)}")
+            for sid in session_ids[:10]:
+                print(f"    {sid}")
+            if len(session_ids) > 10:
+                print(f"    ... and {len(session_ids) - 10} more")
+        return
+
     rows = []
-    for sid in sids:
-        annotation = load_annotation(sid)
-        runtime = annotation.get("runtime", annotation.get("agent", "")) or ""
-        task = annotation.get("task_type", "") or ""
-        source = annotation.get("source", "") or ""
-        topology = annotation.get("topology", "") or ""
-
-        events = store.load(sid)
-        stats = compute_stats(events) if events else {}
-        if not topology:
-            topology = classify_topology(stats)
-        topology = topology or ""
-
+    for record in records:
+        metadata = record["metadata"]
+        stats = record["stats"]
         rows.append({
-            "session_id": sid,
-            "runtime": runtime,
-            "task": task,
-            "topology": topology,
+            "session_id": record["session_id"],
+            "runtime": metadata.get("runtime", "") or "",
+            "task": metadata.get("task_type", "") or "",
+            "topology": record.get("topology", "") or "",
             "events": stats.get("event_count", 0),
             "depth": stats.get("max_depth", 0),
             "roots": stats.get("root_count", 0),
-            "source": source,
+            "source": metadata.get("task_source", "") or "",
         })
 
     # Filter
@@ -975,6 +1087,85 @@ def _handle_corpus(store, args) -> None:
         print(f"{sid:24s}  {r['runtime']:12s}  {r['task']:14s}  {r['topology']:22s}  {r['events']:6d}  {r['depth']:5d}  {r['roots']:5d}")
 
 
+def _handle_report(store, args, resolve_sid) -> None:
+    """Handle ``causetrace report``."""
+    sid = resolve_sid(args.session_id)
+    if not sid:
+        print("No sessions found.")
+        sys.exit(1)
+    events = store.load(sid)
+    if not events:
+        print(f"No events for session: {sid}")
+        sys.exit(1)
+    report = generate_report(sid, events, window_size=args.window, top=args.top)
+    if args.output:
+        Path(args.output).write_text(report)
+        print(f"Report written: {args.output}")
+        return
+    print(report)
+
+
+def _topology_distance(stats_a: dict, stats_b: dict) -> float:
+    keys = (
+        "root_count",
+        "leaf_count",
+        "max_depth",
+        "fan_out_avg",
+        "fan_out_max",
+        "link_ratio",
+        "multi_parent_count",
+    )
+    distances = []
+    for key in keys:
+        a = float(stats_a.get(key, 0) or 0)
+        b = float(stats_b.get(key, 0) or 0)
+        denom = max(abs(a), abs(b), 1.0)
+        distances.append(abs(a - b) / denom)
+    return round(sum(distances) / len(distances), 4)
+
+
+def _transition_divergence(trans_a: list[dict], trans_b: list[dict]) -> float:
+    counts_a = {f"{t['from_tool']}->{t['to_tool']}": t["count"] for t in trans_a}
+    counts_b = {f"{t['from_tool']}->{t['to_tool']}": t["count"] for t in trans_b}
+    keys = set(counts_a) | set(counts_b)
+    total_a = sum(counts_a.values())
+    total_b = sum(counts_b.values())
+    if not keys or total_a == 0 or total_b == 0:
+        return 0.0 if total_a == total_b else 1.0
+    delta = 0.0
+    for key in keys:
+        pa = counts_a.get(key, 0) / total_a
+        pb = counts_b.get(key, 0) / total_b
+        delta += abs(pa - pb)
+    return round(delta / 2, 4)
+
+
+def _branch_summary(events) -> dict:
+    branches = detect_branch_persistence(events)
+    descendants = [b["descendants"] for b in branches]
+    lifespans = [b["lifespan"] for b in branches]
+    frontier = compute_frontier_width(events)
+    retry = detect_retry_density(events)
+    return {
+        "branch_count": len(branches),
+        "avg_descendants": round(sum(descendants) / len(descendants), 2) if descendants else 0.0,
+        "max_lifespan": max(lifespans) if lifespans else 0.0,
+        "frontier_max": frontier["max_width"],
+        "frontier_avg": frontier["avg_width"],
+        "retry_density": retry["retry_density"],
+    }
+
+
+def _root_spawning_summary(events, window_size: int) -> dict:
+    windows = root_spawning_rate(events, window_size=window_size)
+    roots = [w["root_count"] for w in windows]
+    return {
+        "windows": len(windows),
+        "avg_roots": round(sum(roots) / len(roots), 2) if roots else 0.0,
+        "max_roots": max(roots) if roots else 0,
+    }
+
+
 def _handle_compare(store, args) -> None:
     """Handle `causetrace compare`."""
     sid_a = args.session_a
@@ -994,6 +1185,12 @@ def _handle_compare(store, args) -> None:
     stats_b = compute_stats(events_b)
     trans_a = detect_common_transitions(events_a, top_n=args.top)
     trans_b = detect_common_transitions(events_b, top_n=args.top)
+    trans_all_a = detect_common_transitions(events_a, top_n=None)
+    trans_all_b = detect_common_transitions(events_b, top_n=None)
+    branch_a = _branch_summary(events_a)
+    branch_b = _branch_summary(events_b)
+    root_spawn_a = _root_spawning_summary(events_a, args.window)
+    root_spawn_b = _root_spawning_summary(events_b, args.window)
     meta_a = load_annotation(sid_a)
     meta_b = load_annotation(sid_b)
 
@@ -1042,6 +1239,36 @@ def _handle_compare(store, args) -> None:
         marker = ""
         if va != vb:
             marker = f" {DIM}← diff{RST}"
+        print(f"    {label:15s}  {va:>12s}  {vb:>12s}{marker}")
+    print()
+
+    print(f"  {DIM}Topology distance:{RST}")
+    print(f"    distance            {_topology_distance(stats_a, stats_b):>12.4f}")
+    print(f"    transition divergence {_transition_divergence(trans_all_a, trans_all_b):>9.4f}")
+    print()
+
+    branch_rows = [
+        ("Branches", str(branch_a["branch_count"]), str(branch_b["branch_count"])),
+        ("Avg descendants", str(branch_a["avg_descendants"]), str(branch_b["avg_descendants"])),
+        ("Max lifespan", _fmt_duration(branch_a["max_lifespan"]), _fmt_duration(branch_b["max_lifespan"])),
+        ("Frontier max", str(branch_a["frontier_max"]), str(branch_b["frontier_max"])),
+        ("Frontier avg", str(branch_a["frontier_avg"]), str(branch_b["frontier_avg"])),
+        ("Retry density", str(branch_a["retry_density"]), str(branch_b["retry_density"])),
+    ]
+    print(f"  {DIM}Branch distribution:{RST}")
+    for label, va, vb in branch_rows:
+        marker = f" {DIM}← diff{RST}" if va != vb else ""
+        print(f"    {label:15s}  {va:>12s}  {vb:>12s}{marker}")
+    print()
+
+    root_rows = [
+        ("Windows", str(root_spawn_a["windows"]), str(root_spawn_b["windows"])),
+        ("Avg roots", str(root_spawn_a["avg_roots"]), str(root_spawn_b["avg_roots"])),
+        ("Max roots", str(root_spawn_a["max_roots"]), str(root_spawn_b["max_roots"])),
+    ]
+    print(f"  {DIM}Root spawning (window={args.window}):{RST}")
+    for label, va, vb in root_rows:
+        marker = f" {DIM}← diff{RST}" if va != vb else ""
         print(f"    {label:15s}  {va:>12s}  {vb:>12s}{marker}")
     print()
 

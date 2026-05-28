@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causetrace"
-version = "0.1.3"
+version = "0.2.0"
 description = "AI coding agent observability and causal tracing for Claude Code, Codex CLI, and OpenCode"
 readme = "README.md"
 license = {text = "MIT"}

@@ -6,7 +6,7 @@ Layer 1 — Structural (pure graph/path/topology metrics):
 
 Layer 1.2 — Entropy & density (derived topological measures):
     transition_entropy, branch_density, root_spawning_rate,
-    path_reuse_ratio
+    path_reuse_ratio, compute_frontier_width
 
 Layer 1.3 — Morphology (structural phenotype classification):
     classify_topology
@@ -16,7 +16,8 @@ Layer 1.4 — Drift detection (structural change over time):
 
 Layer 2 — Pattern (repeated structures, no semantic interpretation):
     detect_repeated_paths, detect_common_transitions,
-    detect_fan_in_patterns, detect_branch_collapse
+    detect_fan_in_patterns, detect_branch_collapse,
+    detect_branch_persistence, detect_retry_density
 
 Layer 1.5 — Temporal (time-local analysis support):
     windowed
@@ -492,6 +493,150 @@ def path_reuse_ratio(events, max_depth: int = 10) -> dict:
         "reuse_ratio": round(1.0 - (unique_paths / total_paths), 4) if total_paths > 0 else 0.0,
         "total_paths": total_paths,
         "unique_paths": unique_paths,
+    }
+
+
+def _branch_starts(events) -> List[str]:
+    """Return structural branch start event IDs."""
+    if not events:
+        return []
+    children, parent_map = _build_graph_indexes(events)
+    starts: list[str] = []
+    for ev in events:
+        parents = parent_map[ev.event_id]
+        if not parents:
+            starts.append(ev.event_id)
+            continue
+        if any(len(children.get(parent_id, [])) > 1 for parent_id in parents):
+            starts.append(ev.event_id)
+    return starts
+
+
+def _descendant_ids(start_id: str, children: Dict[str, List[str]]) -> set[str]:
+    descendants: set[str] = set()
+    stack = list(children.get(start_id, []))
+    while stack:
+        node = stack.pop()
+        if node in descendants:
+            continue
+        descendants.add(node)
+        stack.extend(children.get(node, []))
+    return descendants
+
+
+def detect_branch_persistence(events) -> List[dict]:
+    """Measure structural branch lifespans.
+
+    Branch starts are roots plus children of fan-out points. Lifespan is the
+    timestamp span covered by the branch start and all local descendants.
+    """
+    if not events:
+        return []
+
+    children, _ = _build_graph_indexes(events)
+    index = _by_id(events)
+    results: List[dict] = []
+
+    for branch_id in _branch_starts(events):
+        node_ids = {branch_id} | _descendant_ids(branch_id, children)
+        timestamps = [
+            _parse_ts(index[node_id].timestamp)
+            for node_id in node_ids
+            if node_id in index
+        ]
+        timestamps = [ts for ts in timestamps if ts is not None]
+        lifespan = 0.0
+        if len(timestamps) >= 2:
+            lifespan = (max(timestamps) - min(timestamps)).total_seconds()
+        results.append({
+            "branch_id": branch_id,
+            "lifespan": round(lifespan, 3),
+            "descendants": max(len(node_ids) - 1, 0),
+        })
+
+    results.sort(key=lambda r: (-r["lifespan"], -r["descendants"], r["branch_id"]))
+    return results
+
+
+def compute_frontier_width(events) -> dict:
+    """Compute active structural branch width over event order.
+
+    A branch is active from its start event through the latest descendant event
+    observed in the session-local DAG.
+    """
+    if not events:
+        return {"max_width": 0, "avg_width": 0.0, "width_by_event": []}
+
+    sorted_events = sorted(events, key=lambda ev: ev.timestamp)
+    event_index = {ev.event_id: idx for idx, ev in enumerate(sorted_events)}
+    children, _ = _build_graph_indexes(sorted_events)
+
+    intervals: list[tuple[int, int]] = []
+    for branch_id in _branch_starts(sorted_events):
+        if branch_id not in event_index:
+            continue
+        ids = {branch_id} | _descendant_ids(branch_id, children)
+        positions = [event_index[node_id] for node_id in ids if node_id in event_index]
+        if positions:
+            intervals.append((min(positions), max(positions)))
+
+    width_by_event = []
+    for idx, ev in enumerate(sorted_events):
+        width = sum(1 for start, end in intervals if start <= idx <= end)
+        width_by_event.append({"event_id": ev.event_id, "width": width})
+
+    widths = [row["width"] for row in width_by_event]
+    return {
+        "max_width": max(widths) if widths else 0,
+        "avg_width": round(sum(widths) / len(widths), 3) if widths else 0.0,
+        "width_by_event": width_by_event,
+    }
+
+
+def detect_retry_density(events) -> dict:
+    """Estimate repeated local structure density.
+
+    This combines repeated transition concentration, repeated path reuse, and
+    same-tool parent-child loops. It is structural only: no semantic labeling.
+    """
+    if len(events) < 2:
+        return {
+            "retry_density": 0.0,
+            "transition_repetition": 0.0,
+            "path_reuse_ratio": 0.0,
+            "local_loop_density": 0.0,
+            "repeated_transitions": [],
+        }
+
+    transitions = detect_common_transitions(events, top_n=None)
+    transition_total = sum(t["count"] for t in transitions)
+    repeated_transition_excess = sum(max(t["count"] - 1, 0) for t in transitions)
+    transition_repetition = (
+        repeated_transition_excess / transition_total if transition_total else 0.0
+    )
+
+    reuse = path_reuse_ratio(events, max_depth=5)["reuse_ratio"]
+    by_id = _by_id(events)
+    parent_map = _build_parent_map(events)
+    edge_count = 0
+    same_tool_edges = 0
+    for ev in events:
+        for parent_id in parent_map.get(ev.event_id, []):
+            parent = by_id.get(parent_id)
+            if not parent:
+                continue
+            edge_count += 1
+            if parent.tool_name == ev.tool_name:
+                same_tool_edges += 1
+    local_loop_density = same_tool_edges / edge_count if edge_count else 0.0
+    retry_density = (transition_repetition + reuse + local_loop_density) / 3
+
+    return {
+        "retry_density": round(retry_density, 4),
+        "transition_repetition": round(transition_repetition, 4),
+        "path_reuse_ratio": round(reuse, 4),
+        "local_loop_density": round(local_loop_density, 4),
+        "repeated_transitions": [t for t in transitions if t["count"] > 1],
     }
 
 

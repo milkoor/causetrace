@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-05-28
+
+- Add standardized session runtime metadata sidecars and CLI commands.
+- Add corpus snapshot, export, and labeled grouping helpers.
+- Add markdown research report templates for structural session analysis.
+- Add branch persistence, frontier width, and retry density topology primitives.
+- Expand `compare` with topology distance, transition divergence, branch distribution, and root spawning comparison.
+
 ## 0.1.3 - 2026-05-24
 
 - Add `causetrace demo` for an immediately inspectable saved causal DAG.
