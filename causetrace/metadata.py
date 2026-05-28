@@ -17,6 +17,15 @@ from .annotation import TASK_TYPES, SOURCES, load_annotation
 
 
 METADATA_DIR = os.path.expanduser("~/.causetrace/metadata")
+METADATA_PROVENANCE_SUFFIX = ".provenance.json"
+
+_PROVENANCE_VALUES = {
+    "explicit_sidecar",
+    "annotation",
+    "materialized",
+    "inferred_from_runtime_adapter",
+    "unknown",
+}
 
 _VALID_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _FIELDS = {
@@ -69,6 +78,11 @@ def _validate_session_id(session_id: str) -> None:
 def _metadata_path(session_id: str) -> Path:
     _validate_session_id(session_id)
     return Path(METADATA_DIR) / f"{session_id}.json"
+
+
+def _provenance_path(session_id: str) -> Path:
+    _validate_session_id(session_id)
+    return Path(METADATA_DIR) / f"{session_id}{METADATA_PROVENANCE_SUFFIX}"
 
 
 def _coerce_bool(value: Any, field: str) -> bool | None:
@@ -138,6 +152,83 @@ def _annotation_metadata(session_id: str) -> dict[str, Any]:
     if "repo_size" in annotation:
         mapped["repo_size"] = annotation["repo_size"]
     return mapped
+
+
+def _normalize_provenance_value(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    normalized = str(value).strip().lower()
+    if normalized in _PROVENANCE_VALUES:
+        return normalized
+    return "unknown"
+
+
+def _load_provenance_file(session_id: str) -> dict[str, str]:
+    path = _provenance_path(session_id)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(key): _normalize_provenance_value(value)
+        for key, value in data.items()
+        if str(key) in _FIELDS
+    }
+
+
+def load_metadata_provenance(session_id: str) -> dict[str, str]:
+    """Load per-field provenance for a session's metadata."""
+    provenance = _load_provenance_file(session_id)
+    if provenance:
+        return provenance
+
+    explicit = _load_sidecar(session_id)
+    annotation = _annotation_metadata(session_id)
+    derived: dict[str, str] = {}
+    for field in _FIELDS:
+        if field in explicit:
+            derived[field] = "explicit_sidecar"
+        elif field in annotation:
+            derived[field] = "annotation"
+    return derived
+
+
+def infer_metadata_provenance(session_id: str) -> dict[str, str]:
+    """Infer metadata provenance from persisted sidecars and annotations."""
+    return load_metadata_provenance(session_id)
+
+
+def save_metadata_provenance(session_id: str, provenance: dict[str, Any]) -> dict[str, str]:
+    """Persist metadata provenance sidecar."""
+    normalized = {
+        str(field): _normalize_provenance_value(source)
+        for field, source in provenance.items()
+        if str(field) in _FIELDS
+    }
+    Path(METADATA_DIR).mkdir(parents=True, exist_ok=True)
+    path = _provenance_path(session_id)
+    if normalized:
+        path.write_text(json.dumps(normalized, indent=2, sort_keys=True))
+    elif path.exists():
+        path.unlink()
+    return normalized
+
+
+def merge_metadata_provenance(session_id: str, updates: dict[str, Any]) -> dict[str, str]:
+    """Merge provenance updates into a session's provenance sidecar."""
+    current = load_metadata_provenance(session_id)
+    current.update(
+        {
+            str(field): _normalize_provenance_value(source)
+            for field, source in updates.items()
+            if str(field) in _FIELDS
+        }
+    )
+    return save_metadata_provenance(session_id, current)
 
 
 def load_metadata(session_id: str, *, include_annotation: bool = True) -> SessionMetadata:

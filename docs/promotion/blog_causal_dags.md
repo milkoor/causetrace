@@ -150,7 +150,7 @@ The storage model is intentionally minimal: append-only JSONL per session, zero 
 **Quick start:**
 
 ```bash
-pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.5"
 causetrace demo                 # saved trace, tree, and follow-up commands
 causetrace doctor               # check agent configuration
 ```
@@ -161,5 +161,5 @@ But the point of this post isn't the tool. It's the abstraction: **coding agents
 
 ---
 
-*Try the runnable demo from GitHub `v0.2.0`: install the tagged source and run `causetrace demo`.*
+*Try the runnable demo from GitHub `v0.2.5`: install the tagged source and run `causetrace demo`.*
 *GitHub: [https://github.com/milkoor/causetrace](https://github.com/milkoor/causetrace)*

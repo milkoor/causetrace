@@ -20,7 +20,7 @@ extracted 116 events: 114 tool calls plus 2 reasoning events. The parser:
 ## Reproduce Locally
 
 ```bash
-pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.5"
 causetrace enrich-codex-sessions
 causetrace enrich-codex <session_id> --save
 causetrace stats <session_id>

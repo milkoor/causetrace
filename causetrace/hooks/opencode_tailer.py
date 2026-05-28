@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sqlite3
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -97,6 +98,18 @@ def _parse_log_line(line: str) -> Optional[dict]:
     }
 
 
+def _duration_from_timestamps(start_ts: Optional[str], end_ts: Optional[str]) -> Optional[float]:
+    """Compute elapsed milliseconds between two ISO timestamps."""
+    if not start_ts or not end_ts:
+        return None
+    try:
+        start = datetime.fromisoformat(start_ts)
+        end = datetime.fromisoformat(end_ts)
+    except ValueError:
+        return None
+    return max((end - start).total_seconds() * 1000.0, 0.0)
+
+
 def _find_log_files() -> List[Path]:
     if not LOG_DIR.exists():
         return []
@@ -110,8 +123,8 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
     Args:
         max_files: Number of most recent log files to scan.
     """
-    files = _find_log_files()[:max_files]
-    started: Dict[str, dict] = {}
+    files = list(reversed(_find_log_files()[:max_files]))
+    started: Dict[str, List[str]] = defaultdict(list)
     events: List[ToolEvent] = []
 
     for f in files:
@@ -129,10 +142,14 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
             ts = parsed["timestamp"]
 
             if parsed["status"] == "started":
-                started[tool] = {"timestamp": ts}
+                started[tool].append(ts)
             elif parsed["status"] == "completed":
-                pre = started.pop(tool, None)
+                start_ts = started[tool].pop(0) if started.get(tool) else None
+                if not started.get(tool):
+                    started.pop(tool, None)
                 duration = parsed["duration_ms"]
+                if duration is None:
+                    duration = _duration_from_timestamps(start_ts, ts)
                 events.append(ToolEvent(
                     tool_name=tool,
                     tool_input={},

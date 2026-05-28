@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -218,6 +219,12 @@ def _parse_timestamp(entry: dict) -> Optional[str]:
         return str(ts)
 
 
+def _entry_fingerprint(entry: dict) -> str:
+    """Return a stable fingerprint for a parsed Codex log entry."""
+    payload = json.dumps(entry, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
 def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
     """Scan Codex CLI session logs and extract all tool calls as ToolEvents.
 
@@ -267,7 +274,7 @@ def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
             if not tool_name:
                 continue
 
-            dedup_key = f"{f.name}:{tool_name}:{str(tool_input)[:100]}"
+            dedup_key = f"{f}:{_entry_fingerprint(entry)}"
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
@@ -288,7 +295,7 @@ def scan_logs(max_sessions: int = 3) -> List[ToolEvent]:
             tool_input = call["tool_input"]
             output = outputs.get(call_id, "")
 
-            dedup_key = f"{f.name}:{tool_name}:{str(tool_input)[:100]}"
+            dedup_key = f"{f}:{call_id or _entry_fingerprint(call)}"
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)

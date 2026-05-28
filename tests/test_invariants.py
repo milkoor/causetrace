@@ -107,6 +107,41 @@ def test_causality_no_orphan_references():
             assert ev.parent_event_id in by_id, f"parent_event_id {ev.parent_event_id} not found in events"
 
 
+def test_causality_task_scope_does_not_leak_across_turns():
+    """A task scope should stop at the first non-agent event and not leak to the next turn."""
+    from causetrace.causality import infer_relations
+
+    events = [
+        ToolEvent(tool_name="question", tool_input={}, event_id="q1"),
+        ToolEvent(tool_name="task", tool_input={}, event_id="t1"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="r1"),
+        ToolEvent(tool_name="question", tool_input={}, event_id="q2"),
+        ToolEvent(tool_name="Write", tool_input={}, event_id="w1"),
+    ]
+
+    infer_relations(events)
+
+    assert events[2].parent_event_id == "t1"
+    assert events[4].parent_event_id is None
+
+
+def test_causality_each_task_gets_its_own_scope():
+    """A later task should own the next non-agent event after it appears."""
+    from causetrace.causality import infer_relations
+
+    events = [
+        ToolEvent(tool_name="task", tool_input={}, event_id="t1"),
+        ToolEvent(tool_name="Read", tool_input={}, event_id="r1"),
+        ToolEvent(tool_name="task", tool_input={}, event_id="t2"),
+        ToolEvent(tool_name="Write", tool_input={}, event_id="w1"),
+    ]
+
+    infer_relations(events)
+
+    assert events[1].parent_event_id == "t1"
+    assert events[3].parent_event_id == "t2"
+
+
 def test_causality_tree_roots():
     events = make_fork()
     roots = build_tree(events)
@@ -355,6 +390,65 @@ def test_causality_tool_name_case_insensitive():
     assert len(result) >= 1, "fan-in should detect Edit with Read/Grep parents (capitalized)"
 
 
+def test_causality_break_cycles_removes_back_edge():
+    """_break_cycles should clear at least one edge in a simple cycle."""
+    from causetrace.causality import _break_cycles
+    from causetrace.core import ToolEvent
+
+    events = [
+        ToolEvent(tool_name="A", tool_input={}, event_id="a", parent_event_id="b"),
+        ToolEvent(tool_name="B", tool_input={}, event_id="b", parent_event_id="a"),
+    ]
+
+    broken = _break_cycles(events)
+
+    assert broken >= 1
+    assert not (events[0].parent_event_id and events[1].parent_event_id), "cycle should be broken"
+
+
+def test_causality_break_cycles_preserves_valid_multi_parent_edge():
+    """A cyclic parent should be removed while a valid parent remains."""
+    from causetrace.causality import _break_cycles
+    from causetrace.core import ToolEvent
+
+    events = [
+        ToolEvent(tool_name="A", tool_input={}, event_id="a", parent_event_id="root,b"),
+        ToolEvent(tool_name="B", tool_input={}, event_id="b", parent_event_id="a"),
+    ]
+
+    broken = _break_cycles(events)
+
+    assert broken >= 1
+    assert events[0].parent_event_id == "root"
+    assert events[1].parent_event_id == "a"
+
+
+def test_causal_quality_report_empty_and_chain():
+    """causal_quality_report should handle empty input and a simple chain."""
+    from causetrace.causality import causal_quality_report
+
+    empty = causal_quality_report([])
+    assert empty == {
+        "total_events": 0,
+        "linked_events": 0,
+        "root_events": 0,
+        "multi_parent_events": 0,
+        "max_depth": 0,
+        "avg_chain_length": 0.0,
+        "cycles_remaining": 0,
+        "score": 1.0,
+    }
+
+    chain = make_chain(4)
+    report = causal_quality_report(chain)
+    assert report["total_events"] == 4
+    assert report["linked_events"] == 3
+    assert report["root_events"] == 1
+    assert report["max_depth"] == 3
+    assert report["cycles_remaining"] == 0
+    assert 0.0 < report["score"] < 1.0
+
+
 def test_opencode_tailer_preserves_timestamp():
     """OpenCode tailer must pass parsed ts to ToolEvent."""
     import tempfile
@@ -374,6 +468,118 @@ def test_opencode_tailer_preserves_timestamp():
         finally:
             tailer.LOG_DIR = old_log_dir
     assert events[0].timestamp == "2026-05-01T02:03:05"
+
+
+def test_opencode_tailer_infers_duration_from_started_completed_pair():
+    """When completed lines omit duration, the tailer should derive it from timestamps."""
+    import tempfile
+    from pathlib import Path
+    import causetrace.hooks.opencode_tailer as tailer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_dir = Path(tmp)
+        (log_dir / "tool.log").write_text(
+            "INFO  2026-05-01T02:03:04 service=tool.registry status=started read\n"
+            "INFO  2026-05-01T02:03:05 service=tool.registry status=completed read\n"
+        )
+        old_log_dir = tailer.LOG_DIR
+        tailer.LOG_DIR = log_dir
+        try:
+            events = tailer.scan_logs(max_files=1)
+        finally:
+            tailer.LOG_DIR = old_log_dir
+
+    assert len(events) == 1
+    assert events[0].timestamp == "2026-05-01T02:03:05"
+    assert events[0].duration_ms == 1000.0
+
+
+def test_opencode_tailer_keeps_orphan_completion():
+    """A completed line with no prior start should still emit an event."""
+    import tempfile
+    from pathlib import Path
+    import causetrace.hooks.opencode_tailer as tailer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_dir = Path(tmp)
+        (log_dir / "tool.log").write_text(
+            "INFO  2026-05-01T02:03:05 service=tool.registry status=completed read\n"
+        )
+        old_log_dir = tailer.LOG_DIR
+        tailer.LOG_DIR = log_dir
+        try:
+            events = tailer.scan_logs(max_files=1)
+        finally:
+            tailer.LOG_DIR = old_log_dir
+
+    assert len(events) == 1
+    assert events[0].timestamp == "2026-05-01T02:03:05"
+    assert events[0].duration_ms is None
+
+
+def test_opencode_tailer_pairs_same_tool_started_queue_fifo():
+    """Multiple started entries for the same tool should pair FIFO with completions."""
+    import tempfile
+    from pathlib import Path
+    import causetrace.hooks.opencode_tailer as tailer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_dir = Path(tmp)
+        (log_dir / "tool.log").write_text(
+            "INFO  2026-05-01T02:03:01 service=tool.registry status=started read\n"
+            "INFO  2026-05-01T02:03:10 service=tool.registry status=started read\n"
+            "INFO  2026-05-01T02:03:11 service=tool.registry status=completed read\n"
+            "INFO  2026-05-01T02:03:12 service=tool.registry status=completed read\n"
+        )
+        old_log_dir = tailer.LOG_DIR
+        tailer.LOG_DIR = log_dir
+        try:
+            events = tailer.scan_logs(max_files=1)
+        finally:
+            tailer.LOG_DIR = old_log_dir
+
+    assert len(events) == 2
+    assert [ev.timestamp for ev in events] == [
+        "2026-05-01T02:03:11",
+        "2026-05-01T02:03:12",
+    ]
+    assert [ev.duration_ms for ev in events] == [10000.0, 2000.0]
+
+
+def test_opencode_tailer_pairs_across_log_files():
+    """OpenCode start/completion lines can span rotated files."""
+    import tempfile
+    from pathlib import Path
+    import causetrace.hooks.opencode_tailer as tailer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_dir = Path(tmp)
+        (log_dir / "tool.1.log").write_text(
+            "INFO  2026-05-01T02:03:04 service=tool.registry status=started read\n"
+        )
+        (log_dir / "tool.2.log").write_text(
+            "INFO  2026-05-01T02:03:05 service=tool.registry status=completed read\n"
+        )
+        old_log_dir = tailer.LOG_DIR
+        tailer.LOG_DIR = log_dir
+        try:
+            events = tailer.scan_logs(max_files=2)
+        finally:
+            tailer.LOG_DIR = old_log_dir
+
+    assert len(events) == 1
+    assert events[0].timestamp == "2026-05-01T02:03:05"
+    assert events[0].duration_ms == 1000.0
+
+
+def test_duration_from_timestamps_edge_cases():
+    """_duration_from_timestamps should fail closed on bad inputs and clamp negatives."""
+    from causetrace.hooks.opencode_tailer import _duration_from_timestamps
+
+    assert _duration_from_timestamps(None, "2026-01-01T00:00:01") is None
+    assert _duration_from_timestamps("bad", "2026-01-01T00:00:01") is None
+    assert _duration_from_timestamps("2026-01-01T00:00:05", "2026-01-01T00:00:01") == 0.0
+    assert _duration_from_timestamps("2026-01-01T00:00:01", "2026-01-01T00:00:01") == 0.0
 
 
 def test_validate_cli_returns_failure_for_invalid_session():

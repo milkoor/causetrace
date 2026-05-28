@@ -147,19 +147,21 @@ def _link_subtasks(turn: List[ToolEvent], by_id: Dict[str, ToolEvent]) -> None:
     """Detect agent subtask hierarchy: task tools create parent-child groups.
 
     Pattern: task → [sub-tools] → non-task
-    Events between task and next non-task are children of the task.
+    The first non-agent event after a task is attached to that task and
+    closes the task scope. This avoids leaking one task across later turns.
     """
-    task_stack: List[str] = []
+    active_task_id: Optional[str] = None
     for ev in turn:
         if ev.tool_name in _AGENT_TOOLS:
-            task_stack.append(ev.event_id)
-            # Mark sub-tools as children of this task
+            active_task_id = ev.event_id
+            # Mark sub-tools as children of this task scope
             continue
 
-        if task_stack and not ev.parent_event_id:
-            ev.parent_event_id = task_stack[-1]
-
-        # If this tool is NOT an agent tool, it might close the task scope
+        if active_task_id and not ev.parent_event_id:
+            ev.parent_event_id = active_task_id
+        if active_task_id:
+            # A non-agent event closes the current task scope.
+            active_task_id = None
 
 
 def parse_multi_parent(parent_str: Optional[str]) -> List[str]:
@@ -217,12 +219,17 @@ def _break_cycles(events: List[ToolEvent]) -> int:
 
 def _would_create_cycle(graph: Dict[str, List[str]], child_id: str, parent_id: str) -> bool:
     """Check if setting parent_id as parent of child_id would create a cycle."""
-    visited = {child_id}
+    if child_id == parent_id:
+        return True
+
+    visited = set()
     stack = [parent_id]
     while stack:
         current = stack.pop()
-        if current in visited:
+        if current == child_id:
             return True  # Cycle found
+        if current in visited:
+            continue
         visited.add(current)
         # Traverse parents of current
         for p in graph.get(current, []):
@@ -252,7 +259,7 @@ def causal_quality_report(events: List[ToolEvent]) -> dict:
             "multi_parent_events": 0,
             "max_depth": 0,
             "avg_chain_length": 0.0,
-            "cycles_broken": 0,
+            "cycles_remaining": 0,
             "score": 1.0,
         }
 

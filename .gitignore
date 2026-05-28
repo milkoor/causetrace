@@ -20,8 +20,18 @@ build/
 dist/
 *.egg
 
+# Local research notes / drafts not meant for release
+docs/project-intro-zh.md
+docs/research-notes/*.xlsx
+docs/research-notes/*.md
+docs/research/patterns/*.md
+!docs/promotion/release_v0.2.5.md
+!docs/promotion/show_hn_v0.2.5.md
+memory/*.md
+
 # Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+.aider*

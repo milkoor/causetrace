@@ -31,7 +31,7 @@ Agent behavior debugging is fundamentally different from traditional debugging. 
 Would appreciate feedback from anyone working on agent observability or tool-use monitoring.
 
 GitHub: https://github.com/milkoor/causetrace
-Install current GitHub release: `pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"`
+Install current GitHub release: `pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.5"`
 
 Runnable first look: `causetrace demo` creates a local, inspectable causal DAG
 without requiring any agent credentials or trace data.

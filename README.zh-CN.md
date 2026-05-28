@@ -191,6 +191,12 @@ causetrace corpus snapshot                       # 可复现的 corpus 快照
 causetrace corpus export                         # 数据集清单 JSON
 causetrace corpus groups --label task_type       # 按标签分组会话
 causetrace corpus health                         # 里程碑缺口与覆盖率
+causetrace corpus benchmark                      # 按元数据标签生成 benchmark manifest
+causetrace corpus benchmark verify <dir>         # 校验 benchmark manifest 完整性
+causetrace corpus benchmark compare <a> <b>      # 对比两个 benchmark manifest
+causetrace corpus taxonomy                       # 拓扑结构 taxonomy
+causetrace corpus readiness                      # Phase-3 研究就绪门槛
+causetrace corpus materialize                    # 物化 canonical 元数据 sidecar
 causetrace report <session_id>                   # Markdown 研究模板
 causetrace compare <session_a> <session_b>
 ```
@@ -259,6 +265,12 @@ causetrace compare <session_a> <session_b>
 | `causetrace corpus export` | 导出 corpus 清单 JSON |
 | `causetrace corpus groups` | 按元数据标签分组会话 |
 | `causetrace corpus health` | 显示里程碑缺口与覆盖率 |
+| `causetrace corpus benchmark` | 基于 corpus 标签生成 benchmark manifest |
+| `causetrace corpus benchmark verify <dir>` | 校验 benchmark manifest 完整性 |
+| `causetrace corpus benchmark compare <a> <b>` | 对比两个 benchmark manifest |
+| `causetrace corpus taxonomy` | 生成结构拓扑 taxonomy |
+| `causetrace corpus readiness` | 显示 Phase-3 研究就绪度与阻塞项 |
+| `causetrace corpus materialize` | 物化 canonical 元数据 sidecar |
 | `causetrace report <id>` | 生成 Markdown 研究模板 |
 | `causetrace compare <a> <b>` | 对比两个会话的拓扑和转移 |
 | `causetrace doctor` | 诊断 Agent 配置和数据源状态 |

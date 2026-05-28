@@ -97,13 +97,17 @@ Zero intra-project dependencies. Standardized session runtime metadata sidecars.
 Zero intra-project dependencies beyond core metadata and analysis primitives.
 
 **Exports:** `build_session_record`, `list_corpus_records`, `snapshot_corpus`,
-`export_dataset`, `group_labeled_sessions`, `summarize_corpus_health`
+`export_dataset`, `build_benchmark_manifest`, `benchmark_corpus`,
+`verify_snapshot`, `verify_benchmark_manifest`, `compare_benchmark_manifests`,
+`build_topology_taxonomy`, `taxonomy_corpus`, `assess_phase3_readiness`,
+`infer_runtime_label`, `materialize_corpus_metadata`,
+`group_labeled_sessions`, `summarize_corpus_health`
 
 **Consumed by:**
 
 | Consumer | What it uses |
 |----------|-------------|
-| `cli.py` | All 5 exports |
+| `cli.py` | All corpus exports |
 | `report.py` | `generate_corpus_health_report` |
 
 ## Layer 1.9: Report (`causetrace/report.py`)
@@ -214,6 +218,12 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `corpus export` | `_handle_corpus()` | corpus |
 | `corpus groups` | `_handle_corpus()` | corpus |
 | `corpus health` | `_handle_corpus()` | corpus, report |
+| `corpus benchmark` | `_handle_corpus()` | corpus |
+| `corpus benchmark verify` | `_handle_corpus()` | corpus |
+| `corpus benchmark compare` | `_handle_corpus()` | corpus |
+| `corpus taxonomy` | `_handle_corpus()` | corpus |
+| `corpus readiness` | `_handle_corpus()` | corpus, report |
+| `corpus materialize` | `_handle_corpus()` | corpus, metadata |
 | `report` | `_handle_report()` | report |
 | `compare` | `_handle_compare()` | analysis, annotation |
 | `doctor` | `_run_doctor()` | cli (inline) |

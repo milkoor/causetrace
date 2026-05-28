@@ -18,22 +18,22 @@ Track promotion activities. Add entries when new content is published.
 
 | Item | Status | Ready when |
 |------|--------|------------|
-| v0.2.0 release announcement | Content ready in `docs/promotion/release_v0.2.0.md` | Published alongside the PyPI release |
-| New Show HN post (demo-focused) | Content ready in `docs/promotion/show_hn_v0.2.0.md` | After v0.2.0 demo is live |
+| v0.2.5 release announcement | Draft ready in `docs/promotion/release_v0.2.5.md` | Published alongside the PyPI release |
+| New Show HN post (demo-focused) | Draft ready in `docs/promotion/show_hn_v0.2.5.md` | After v0.2.5 demo is live |
 | X/Twitter Tweet 2 | Content ready in `docs/promotion/twitter.md` | 24h after Tweet 1 |
 | X/Twitter Tweet 3 | Content ready in `docs/promotion/twitter.md` | 24h after Tweet 2 |
 | Blog 3: Claude Code hooks parent_event_id bug | Outline in `docs/promotion/blog_posts.md` | Next major cycle |
-| Existing dev.to updates | Source corrected; live update requires `DEVTO_API_KEY` | After v0.2.0 release |
-| Reddit post | Drafts ready | After v0.2.0 release and demo image |
-| PyPI `0.2.0` upload | Published successfully via GitHub Actions | Complete |
+| Existing dev.to updates | Source corrected; live update requires `DEVTO_API_KEY` | After v0.2.5 release |
+| Reddit post | Drafts ready | After v0.2.5 release and demo image |
+| PyPI `0.2.5` upload | Ready to publish after release tagging | Awaiting release cut |
 
 ## Templates
 
 - `docs/promotion/hn_final.txt` — Clean HN post (no project name, no GitHub link)
-- `docs/promotion/show_hn_v0.2.0.md` — New runnable Show HN draft
+- `docs/promotion/show_hn_v0.2.5.md` — New runnable Show HN draft
 - `docs/promotion/twitter.md` — Tweet drafts with screenshot suggestions
 - `docs/promotion/blog_causal_dags.md` — Blog post 1
 - `docs/promotion/blog_codex_reverse_engineering.md` — Blog post 2
 - `docs/promotion/blog_posts.md` — Blog outlines for future posts
-- `docs/promotion/release_v0.2.0.md` — Release announcement copy and distribution checklist
+- `docs/promotion/release_v0.2.5.md` — Release announcement copy and distribution checklist
 - `tools/promote.py` — CLI tools for dev.to posting, tweet formatting, HN stripping

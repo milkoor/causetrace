@@ -1,6 +1,8 @@
 """Markdown research report templates for trace sessions."""
 from __future__ import annotations
 
+from collections import Counter
+
 from .analysis import (
     compute_stats,
     detect_common_transitions,
@@ -8,9 +10,83 @@ from .analysis import (
     find_roots,
     longest_path,
 )
-from .corpus import summarize_corpus_health
+from .corpus import assess_phase3_readiness, summarize_corpus_health
 from .core import _fmt_input
-from .metadata import load_metadata
+from .metadata import load_metadata, load_metadata_provenance
+
+
+_STRICT_RESEARCH_FIELDS = ("runtime", "task_type", "task_source", "success")
+_OPTIONAL_RESEARCH_FIELDS = ("model", "repo_language", "repo_size", "duration", "human_intervention")
+_TRUSTED_PROVENANCE_SOURCES = {"explicit_sidecar", "annotation"}
+
+
+def _field_provenance_audit(store) -> dict[str, dict[str, int]]:
+    audit: dict[str, Counter[str]] = {
+        field: Counter() for field in (*_STRICT_RESEARCH_FIELDS, *_OPTIONAL_RESEARCH_FIELDS)
+    }
+    for sid in store.list_sessions():
+        metadata = load_metadata(sid).to_dict()
+        provenance = load_metadata_provenance(sid)
+        for field in audit:
+            if metadata.get(field) in (None, "", [], {}):
+                audit[field]["missing"] += 1
+                continue
+            source = provenance.get(field, "unknown")
+            audit[field][source] += 1
+    return {field: dict(counts) for field, counts in audit.items()}
+
+
+def _research_grade_candidates(store, *, limit: int = 10) -> dict[str, object]:
+    candidates: list[dict[str, object]] = []
+    strict_total = 0
+    strict_passing = 0
+    for sid in store.list_sessions():
+        metadata = load_metadata(sid).to_dict()
+        provenance = load_metadata_provenance(sid)
+        missing_strict: list[str] = []
+        untrusted_strict: list[str] = []
+        missing_optional: list[str] = []
+
+        for field in _STRICT_RESEARCH_FIELDS:
+            value = metadata.get(field)
+            source = provenance.get(field, "unknown")
+            if value in (None, "", [], {}):
+                missing_strict.append(field)
+                continue
+            if source not in _TRUSTED_PROVENANCE_SOURCES:
+                untrusted_strict.append(field)
+
+        for field in _OPTIONAL_RESEARCH_FIELDS:
+            if metadata.get(field) in (None, "", [], {}):
+                missing_optional.append(field)
+
+        if not missing_strict and not untrusted_strict:
+            strict_passing += 1
+        else:
+            candidates.append({
+                "session_id": sid,
+                "missing_strict": missing_strict,
+                "untrusted_strict": untrusted_strict,
+                "missing_optional": missing_optional,
+                "missing_total": len(missing_strict) + len(untrusted_strict) + len(missing_optional),
+            })
+
+        strict_total += 1
+
+    candidates.sort(
+        key=lambda item: (
+            item["missing_total"],
+            len(item["missing_strict"]),
+            len(item["untrusted_strict"]),
+            len(item["missing_optional"]),
+            item["session_id"],
+        )
+    )
+    return {
+        "strict_research_grade_sessions": strict_passing,
+        "strict_research_grade_total": strict_total,
+        "near_misses": candidates[:limit],
+    }
 
 
 def generate_report(session_id: str, events, *, window_size: int = 50, top: int = 10) -> str:
@@ -116,6 +192,8 @@ def generate_corpus_health_report(store) -> str:
     """Render a markdown corpus gap report for the current local dataset."""
     summary = summarize_corpus_health(store)
     milestones = summary["milestones"]
+    provenance_audit = _field_provenance_audit(store)
+    research_grade = _research_grade_candidates(store)
 
     lines: list[str] = [
         "# Corpus health report",
@@ -130,6 +208,8 @@ def generate_corpus_health_report(store) -> str:
         f"- heuristic runtime sessions: {summary['heuristic_runtime_sessions']}",
         f"- task-type sessions: {summary['task_type_sessions']}",
         f"- source sessions: {summary['source_sessions']}",
+        f"- research-grade sessions: {summary['research_grade_sessions']}",
+        f"- strict research-grade sessions: {research_grade['strict_research_grade_sessions']}",
         "",
         "## Milestones",
         "",
@@ -169,6 +249,56 @@ def generate_corpus_health_report(store) -> str:
         lines.append(f"  - {label}: {count}")
 
     lines.extend([
+        "- metadata provenance counts:",
+    ])
+    provenance_counts = summary.get("metadata_provenance_counts", {})
+    if provenance_counts:
+        for label, count in sorted(provenance_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"  - {label}: {count}")
+    else:
+        lines.append("  - none")
+
+    lines.extend([
+        "",
+        "## Metadata Provenance Audit",
+        "",
+    ])
+    for field in (*_STRICT_RESEARCH_FIELDS, *_OPTIONAL_RESEARCH_FIELDS):
+        lines.append(f"- {field}:")
+        field_counts = provenance_audit.get(field, {})
+        for source, count in sorted(field_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"  - {source}: {count}")
+
+    lines.extend([
+        "",
+        "## Missing Metadata Coverage",
+        "",
+    ])
+    missing_counts = summary.get("metadata_missing_counts", {})
+    for field in (*_STRICT_RESEARCH_FIELDS, *_OPTIONAL_RESEARCH_FIELDS):
+        count = missing_counts.get(field, 0)
+        lines.append(f"- {field}: {count}")
+
+    lines.extend([
+        "",
+        "## Near Research-Grade Sessions",
+        "",
+        f"- strict research-grade sessions: {research_grade['strict_research_grade_sessions']}/{research_grade['strict_research_grade_total']}",
+    ])
+    near_misses = research_grade["near_misses"]
+    if near_misses:
+        for item in near_misses:
+            missing = ", ".join(item["missing_strict"]) or "none"
+            untrusted = ", ".join(item["untrusted_strict"]) or "none"
+            optional = ", ".join(item["missing_optional"]) or "none"
+            lines.append(
+                f"- {item['session_id']}: missing={missing}; "
+                f"untrusted={untrusted}; optional_missing={optional}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend([
         "",
         "## Structural Signals",
         "",
@@ -186,6 +316,118 @@ def generate_corpus_health_report(store) -> str:
         "- Need explicit runtime labels across Claude, Codex, Aider, and OpenCode.",
         "- Need more fan-in, branch-collapse, and multi-root exemplars to prevent the taxonomy from collapsing into mostly linear chains.",
         "- Need a larger labeled corpus before treating topology-task correlations as stable.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def generate_phase3_readiness_report(store) -> str:
+    """Render a markdown report for phase-3 research readiness."""
+    readiness = assess_phase3_readiness(store)
+    summary = readiness["summary"]
+    research_grade = _research_grade_candidates(store)
+
+    lines: list[str] = [
+        "# Phase 3 readiness report",
+        "",
+        "## Snapshot",
+        "",
+        f"- ready: {readiness['ready']}",
+        f"- sessions: {readiness['session_count']}",
+        f"- explicit metadata sessions: {readiness['metadata_sessions']}",
+        f"- explicit runtime sessions: {readiness['explicit_runtime_sessions']}",
+        f"- task-type sessions: {readiness['task_type_sessions']}",
+        f"- research-grade sessions: {readiness['research_grade_sessions']}",
+        f"- strict research-grade sessions: {research_grade['strict_research_grade_sessions']}",
+        f"- runtime breadth: {readiness['runtime_breadth']}",
+        f"- task breadth: {readiness['task_breadth']}",
+        "",
+        "## Research Protocol",
+        "",
+        "- Canonical metadata fields:",
+    ]
+
+    for field in readiness["canonical_metadata_fields"]:
+        lines.append(f"  - {field}")
+
+    lines.extend([
+        "- Taxonomy protocol:",
+    ])
+    for label, description in readiness["taxonomy_protocol"].items():
+        lines.append(f"  - {label}: {description}")
+
+    lines.extend([
+        "- Taxonomy is observational, not ontological.",
+        "- Negative results must be recorded alongside positive findings.",
+        "",
+        "## Criteria",
+        "",
+    ])
+
+    for item in readiness["criteria"]:
+        marker = "[x]" if item["passed"] else "[ ]"
+        lines.append(
+            f"- {marker} {item['label']}: {item['current']}/{item['target']} (remaining {item['remaining']})"
+        )
+
+    lines.extend([
+        "",
+        "## Blockers",
+        "",
+    ])
+    if readiness["blockers"]:
+        for item in readiness["blockers"]:
+            lines.append(f"- {item['label']} still short by {item['remaining']}")
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Explicit Metadata Coverage",
+        "",
+    ])
+    for field in readiness["canonical_metadata_fields"]:
+        count = readiness["explicit_metadata_field_counts"].get(field, 0)
+        lines.append(f"- {field}: {count}")
+
+    lines.extend([
+        "",
+        "## Missing Metadata Coverage",
+        "",
+    ])
+    missing_counts = summary.get("metadata_missing_counts", {})
+    for field in readiness["canonical_metadata_fields"]:
+        lines.append(f"- {field}: {missing_counts.get(field, 0)}")
+
+    lines.extend([
+        "",
+        "## Structural Signals",
+        "",
+        f"- long sessions (>=100 events): {summary['long_sessions_100']}",
+        f"- branchy sessions: {summary['branchy_sessions']}",
+        f"- frontier-wide sessions (max width >= 4): {summary['frontier_wide_sessions']}",
+        f"- retry-heavy sessions (retry density >= 0.2): {summary['retry_heavy_sessions']}",
+        f"- fan-in sessions: {summary['fan_in_sessions']}",
+        f"- branch-collapse sessions: {summary['branch_collapse_sessions']}",
+        f"- multi-root sessions (roots >= 5): {summary['multi_root_sessions']}",
+        "",
+        "## Near Research-Grade Sessions",
+        "",
+    ])
+    near_misses = research_grade["near_misses"]
+    if near_misses:
+        for item in near_misses:
+            missing = ", ".join(item["missing_strict"]) or "none"
+            untrusted = ", ".join(item["untrusted_strict"]) or "none"
+            optional = ", ".join(item["missing_optional"]) or "none"
+            lines.append(
+                f"- {item['session_id']}: missing={missing}; "
+                f"untrusted={untrusted}; optional_missing={optional}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend([
         "",
     ])
     return "\n".join(lines)

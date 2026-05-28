@@ -23,7 +23,7 @@ $ causetrace tree ses_10d2f16e
 Try it without configuring an agent:
 
 ```bash
-pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.5"
 causetrace demo
 ```
 
@@ -48,4 +48,4 @@ https://github.com/milkoor/causetrace
 
 ---
 
-**Tags:** Python 3.10+, GitHub release `v0.2.0`
+**Tags:** Python 3.10+, GitHub release `v0.2.5`

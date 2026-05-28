@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5 - 2026-05-29
+
+- Harden corpus reporting with field-level metadata provenance and missing-field audits.
+- Canonicalize benchmark and taxonomy manifests so reproducibility does not depend on input ordering.
+- Unify health/readiness statistics through shared corpus facts and research-grade session gates.
+- Add benchmark verify/compare, taxonomy, readiness, and materialization flows for Phase 2.5 research normalization.
+- Expand corpus coverage with labeled review/demo sessions and structural fan-in / branch-collapse / multi-root exemplars.
+
 ## 0.2.0 - 2026-05-28
 
 - Add standardized session runtime metadata sidecars and CLI commands.

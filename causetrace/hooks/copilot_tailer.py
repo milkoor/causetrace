@@ -185,7 +185,7 @@ def scan_logs(max_log_dirs: int = 3) -> List[ToolEvent]:
     """
     log_files = _find_copilot_logs(max_log_dirs=max_log_dirs)
     events: List[ToolEvent] = []
-    seen: set = set()
+    seen_lines: set = set()
 
     for f in log_files:
         try:
@@ -194,6 +194,11 @@ def scan_logs(max_log_dirs: int = 3) -> List[ToolEvent]:
             continue
 
         for line in content.splitlines():
+            line_key = line.strip()
+            if line_key in seen_lines:
+                continue
+            seen_lines.add(line_key)
+
             result = _parse_log_line(line)
             if result is None:
                 continue
@@ -201,12 +206,6 @@ def scan_logs(max_log_dirs: int = 3) -> List[ToolEvent]:
             tool_name, tool_input, tool_output = result
             if not tool_name:
                 continue
-
-            # Deduplicate
-            dedup_key = f"{tool_name}:{str(tool_input.get('raw', str(tool_input)))[:80]}"
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
 
             timestamp = _parse_timestamp_from_line(line)
 

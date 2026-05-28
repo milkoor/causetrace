@@ -18,7 +18,7 @@ from .analysis import (
 )
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
-from .corpus import export_dataset, group_labeled_sessions, list_corpus_records, snapshot_corpus
+from .corpus import benchmark_corpus, compare_benchmark_manifests, export_dataset, group_labeled_sessions, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
@@ -28,7 +28,7 @@ from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
 from .metadata import load_metadata, merge_metadata
 from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
-from .report import generate_report, generate_corpus_health_report
+from .report import generate_report, generate_corpus_health_report, generate_phase3_readiness_report
 
 try:
     from importlib.metadata import version as _import_version
@@ -268,10 +268,29 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_snapshot.add_argument("--output-dir", help="Corpus root directory (default: ~/.causetrace/corpus)")
     p_cr_export = p_cr_sub.add_parser("export", help="Export corpus dataset manifest as JSON")
     p_cr_export.add_argument("--output", "-o", help="Output file (default: stdout)")
+    p_cr_verify = p_cr_sub.add_parser("verify", help="Verify a corpus snapshot manifest and files")
+    p_cr_verify.add_argument("snapshot_dir", help="Snapshot directory to verify")
+    p_cr_benchmark = p_cr_sub.add_parser("benchmark", help="Build a benchmark manifest from the corpus")
+    p_cr_benchmark.add_argument("--name", help="Benchmark name (default: timestamp)")
+    p_cr_benchmark.add_argument("--output-dir", help="Corpus root directory (default: ~/.causetrace/corpus)")
+    p_cr_benchmark.add_argument("--label", default="task_type", help="Metadata label to group by")
+    p_cr_benchmark_sub = p_cr_benchmark.add_subparsers(dest="benchmark_command")
+    p_cr_benchmark_verify = p_cr_benchmark_sub.add_parser("verify", help="Verify a benchmark manifest")
+    p_cr_benchmark_verify.add_argument("benchmark_dir", help="Benchmark directory to verify")
+    p_cr_benchmark_compare = p_cr_benchmark_sub.add_parser("compare", help="Compare two benchmark manifests")
+    p_cr_benchmark_compare.add_argument("benchmark_a", help="First benchmark directory")
+    p_cr_benchmark_compare.add_argument("benchmark_b", help="Second benchmark directory")
+    p_cr_taxonomy = p_cr_sub.add_parser("taxonomy", help="Build a structural topology taxonomy from the corpus")
+    p_cr_taxonomy.add_argument("--name", help="Taxonomy name (default: timestamp)")
+    p_cr_taxonomy.add_argument("--output-dir", help="Corpus root directory (default: ~/.causetrace/corpus)")
     p_cr_groups = p_cr_sub.add_parser("groups", help="Show labeled session groups")
     p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
     p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
     p_cr_health.add_argument("--output", "-o", help="Write report to file")
+    p_cr_readiness = p_cr_sub.add_parser("readiness", help="Show phase-3 research readiness and blockers")
+    p_cr_readiness.add_argument("--output", "-o", help="Write report to file")
+    p_cr_materialize = p_cr_sub.add_parser("materialize", help="Materialize canonical metadata sidecars from annotations and runtime hints")
+    p_cr_materialize.add_argument("--output", "-o", help="Write a summary report to file")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -1043,6 +1062,99 @@ def _handle_corpus(store, args) -> None:
             print(f"Corpus health report written: {args.output}")
         else:
             print(report)
+        return
+
+    if args.corpus_command == "readiness":
+        report = generate_phase3_readiness_report(store)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report)
+            print(f"Phase 3 readiness report written: {args.output}")
+        else:
+            print(report)
+        return
+
+    if args.corpus_command == "materialize":
+        result = materialize_corpus_metadata(store)
+        report_lines = [
+            "# Metadata materialization",
+            "",
+            f"- sessions selected: {result['selected_count']}",
+            f"- sessions updated: {result['updated_count']}",
+            f"- runtime labels inferred: {result['runtime_inferred_count']}",
+            f"- annotation-only sessions materialized: {result['annotation_materialized_count']}",
+            f"- provenance sidecars written: {result['provenance_written_count']}",
+        ]
+        report = "\n".join(report_lines)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report)
+            print(f"Metadata materialization report written: {args.output}")
+        else:
+            print(report)
+        return
+
+    if args.corpus_command == "verify":
+        result = verify_snapshot(args.snapshot_dir)
+        print(f"Snapshot: {result['snapshot_dir']}")
+        print(f"  OK: {result['ok']}")
+        print(f"  Manifest hash match: {result['manifest_hash_match']}")
+        print(f"  Sessions verified: {result['verified_count']}/{result['session_count']}")
+        if result["issues"]:
+            print("  Issues:")
+            for issue in result["issues"]:
+                print(f"    - {issue}")
+        return
+
+    if args.corpus_command == "benchmark":
+        if getattr(args, "benchmark_command", None) == "verify":
+            result = verify_benchmark_manifest(args.benchmark_dir)
+            print(f"Benchmark: {result['benchmark_dir']}")
+            print(f"  OK: {result['ok']}")
+            print(f"  Hash match: {result['manifest_hash_match']}")
+            print(f"  Sessions verified: {result['verified_session_count']}/{result['session_count']}")
+            if result["issues"]:
+                print("  Issues:")
+                for issue in result["issues"]:
+                    print(f"    - {issue}")
+            return
+        if getattr(args, "benchmark_command", None) == "compare":
+            result = compare_benchmark_manifests(args.benchmark_a, args.benchmark_b)
+            print(f"Benchmark A: {result['benchmark_a']}")
+            print(f"Benchmark B: {result['benchmark_b']}")
+            print(f"  Hash match: {result['hash_match']}")
+            print(f"  Sessions: {result['session_count_a']} vs {result['session_count_b']}")
+            print(f"  Groups: {result['group_count_a']} vs {result['group_count_b']}")
+            print(f"  Runtime distance: {result['runtime_distance']}")
+            print(f"  Topology distance: {result['topology_distance']}")
+            print(f"  Shared session IDs: {len(result['shared_session_ids'])}")
+            print(f"  Only in A: {len(result['only_in_a'])}")
+            print(f"  Only in B: {len(result['only_in_b'])}")
+            if result["verify_a"]["issues"]:
+                print("  Benchmark A issues:")
+                for issue in result["verify_a"]["issues"]:
+                    print(f"    - {issue}")
+            if result["verify_b"]["issues"]:
+                print("  Benchmark B issues:")
+                for issue in result["verify_b"]["issues"]:
+                    print(f"    - {issue}")
+            return
+        result = benchmark_corpus(store, output_dir=args.output_dir, name=args.name, label=args.label)
+        print(f"Benchmark: {result['benchmark_dir']}")
+        print(f"  Sessions: {result['session_count']}")
+        print(f"  Groups: {result['manifest']['group_count']}")
+        print(f"  Hash: {result['manifest']['benchmark_hash']}")
+        return
+
+    if args.corpus_command == "taxonomy":
+        result = taxonomy_corpus(store, output_dir=args.output_dir, name=args.name)
+        print(f"Taxonomy: {result['taxonomy_dir']}")
+        print(f"  Sessions: {result['session_count']}")
+        print(f"  Groups: {result['manifest']['group_count']}")
+        print(f"  Tags: {len(result['manifest']['tag_counts'])}")
+        print(f"  Hash: {result['manifest']['taxonomy_hash']}")
         return
 
     records = list_corpus_records(store)

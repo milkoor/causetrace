@@ -15,7 +15,7 @@ Usage:
     python3 tools/promote.py hn-strip < input.txt > output.txt
 
     # Generate promotion checklist for a new version
-    python3 tools/promote.py checklist v0.2.0 "brief description of what's new"
+    python3 tools/promote.py checklist v0.2.5 "brief description of what's new"
 
 Environment:
     DEVTO_API_KEY — dev.to API key for blogging

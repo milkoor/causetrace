@@ -194,6 +194,12 @@ causetrace corpus snapshot                       # Reproducible corpus snapshot
 causetrace corpus export                         # Dataset manifest JSON
 causetrace corpus groups --label task_type       # Group sessions by label
 causetrace corpus health                         # Milestone gaps and coverage
+causetrace corpus benchmark                      # Benchmark manifest by metadata label
+causetrace corpus benchmark verify <dir>         # Verify benchmark manifest integrity
+causetrace corpus benchmark compare <a> <b>      # Compare two benchmark manifests
+causetrace corpus taxonomy                       # Structural topology taxonomy
+causetrace corpus readiness                      # Phase-3 research readiness gate
+causetrace corpus materialize                    # Materialize canonical metadata sidecars
 causetrace report <session_id>                   # Markdown research template
 causetrace compare <session_a> <session_b>
 ```
@@ -263,6 +269,12 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace corpus export` | Export the corpus manifest as JSON |
 | `causetrace corpus groups` | Group sessions by a metadata label |
 | `causetrace corpus health` | Show milestone gaps and coverage |
+| `causetrace corpus benchmark` | Build a benchmark manifest from corpus labels |
+| `causetrace corpus benchmark verify <dir>` | Verify benchmark manifest integrity |
+| `causetrace corpus benchmark compare <a> <b>` | Compare two benchmark manifests |
+| `causetrace corpus taxonomy` | Build a structural topology taxonomy |
+| `causetrace corpus readiness` | Show phase-3 research readiness and blockers |
+| `causetrace corpus materialize` | Materialize canonical metadata sidecars |
 | `causetrace report <id>` | Generate a markdown research template |
 | `causetrace compare <a> <b>` | Compare topology and transitions across sessions |
 | `causetrace doctor` | Diagnose agent configuration and data sources |

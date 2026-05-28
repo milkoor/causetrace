@@ -23,6 +23,6 @@
 **文章末尾可复现入口：**
 
 ```bash
-pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"
+pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.5"
 causetrace demo
 ```

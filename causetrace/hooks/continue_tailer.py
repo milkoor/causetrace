@@ -161,7 +161,7 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
     """
     files = _find_log_files()[:max_files]
     events: List[ToolEvent] = []
-    seen: set = set()
+    seen_lines: set = set()
 
     for f in files:
         try:
@@ -170,6 +170,11 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
             continue
 
         for line in content.splitlines():
+            line_key = line.strip()
+            if line_key in seen_lines:
+                continue
+            seen_lines.add(line_key)
+
             entry = _parse_json_line(line)
             if not entry:
                 continue
@@ -180,12 +185,6 @@ def scan_logs(max_files: int = 3) -> List[ToolEvent]:
             tool_name, tool_input, tool_output = _extract_tool_info(entry)
             if not tool_name:
                 continue
-
-            # Deduplicate: same tool + same input within a short window
-            dedup_key = f"{tool_name}:{tool_input[:100]}"
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
 
             timestamp = _parse_timestamp(entry)
 
