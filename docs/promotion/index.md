@@ -11,28 +11,29 @@ Track promotion activities. Add entries when new content is published.
 | 2026-05-14 | Blog | Reverse engineering Codex CLI rollout traces | https://dev.to/milkoor/reverse-engineering-codex-cli-rollout-traces-3b9b | Live |
 | 2026-05-14 | X/Twitter | Tweet 1: Causal tree vs flat log | URL not recorded | Publication unverified |
 | 2026-05-24 | Release | v0.1.3 - Runnable onboarding for agent causal tracing | https://github.com/milkoor/causetrace/releases/tag/v0.1.3 | GitHub live; PyPI pending publisher registration |
+| 2026-05-28 | Release | v0.2.0 - Runtime topology corpus tooling | https://github.com/milkoor/causetrace/releases/tag/v0.2.0 | GitHub live; PyPI live |
 | 2026-05-24 | Discussion | Share a sanitized AI coding agent trace or debugging case | https://github.com/milkoor/causetrace/discussions/1 | Live |
 
 ## Pending
 
 | Item | Status | Ready when |
 |------|--------|------------|
-| v0.1.3 release announcement | Content ready in `docs/promotion/release_v0.1.3.md` | After PyPI package is live |
-| New Show HN post (demo-focused) | Content ready in `docs/promotion/show_hn_v0.1.3.md` | After v0.1.3 demo is live |
+| v0.2.0 release announcement | Content ready in `docs/promotion/release_v0.2.0.md` | Published alongside the PyPI release |
+| New Show HN post (demo-focused) | Content ready in `docs/promotion/show_hn_v0.2.0.md` | After v0.2.0 demo is live |
 | X/Twitter Tweet 2 | Content ready in `docs/promotion/twitter.md` | 24h after Tweet 1 |
 | X/Twitter Tweet 3 | Content ready in `docs/promotion/twitter.md` | 24h after Tweet 2 |
 | Blog 3: Claude Code hooks parent_event_id bug | Outline in `docs/promotion/blog_posts.md` | Next major cycle |
-| Existing dev.to updates | Source corrected; live update requires `DEVTO_API_KEY` | After v0.1.3 release |
-| Reddit post | Drafts ready | After v0.1.3 release and demo image |
-| PyPI `0.1.3` upload | Workflow built artifacts; OIDC returned `invalid-publisher` | Register Trusted Publisher, then rerun workflow |
+| Existing dev.to updates | Source corrected; live update requires `DEVTO_API_KEY` | After v0.2.0 release |
+| Reddit post | Drafts ready | After v0.2.0 release and demo image |
+| PyPI `0.2.0` upload | Published successfully via GitHub Actions | Complete |
 
 ## Templates
 
 - `docs/promotion/hn_final.txt` — Clean HN post (no project name, no GitHub link)
-- `docs/promotion/show_hn_v0.1.3.md` — New runnable Show HN draft
+- `docs/promotion/show_hn_v0.2.0.md` — New runnable Show HN draft
 - `docs/promotion/twitter.md` — Tweet drafts with screenshot suggestions
 - `docs/promotion/blog_causal_dags.md` — Blog post 1
 - `docs/promotion/blog_codex_reverse_engineering.md` — Blog post 2
 - `docs/promotion/blog_posts.md` — Blog outlines for future posts
-- `docs/promotion/release_v0.1.3.md` — Release announcement copy and distribution checklist
+- `docs/promotion/release_v0.2.0.md` — Release announcement copy and distribution checklist
 - `tools/promote.py` — CLI tools for dev.to posting, tweet formatting, HN stripping

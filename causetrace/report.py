@@ -8,6 +8,7 @@ from .analysis import (
     find_roots,
     longest_path,
 )
+from .corpus import summarize_corpus_health
 from .core import _fmt_input
 from .metadata import load_metadata
 
@@ -106,6 +107,85 @@ def generate_report(session_id: str, events, *, window_size: int = 50, top: int 
         "- Retry or repair structure:",
         "- Branching and collapse notes:",
         "- Open questions:",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def generate_corpus_health_report(store) -> str:
+    """Render a markdown corpus gap report for the current local dataset."""
+    summary = summarize_corpus_health(store)
+    milestones = summary["milestones"]
+
+    lines: list[str] = [
+        "# Corpus health report",
+        "",
+        "## Snapshot",
+        "",
+        f"- sessions: {summary['session_count']}",
+        f"- events: {summary['event_count']}",
+        f"- metadata sessions: {summary['metadata_sessions']}",
+        f"- annotated sessions: {summary['annotated_sessions']}",
+        f"- explicit runtime sessions: {summary['explicit_runtime_sessions']}",
+        f"- heuristic runtime sessions: {summary['heuristic_runtime_sessions']}",
+        f"- task-type sessions: {summary['task_type_sessions']}",
+        f"- source sessions: {summary['source_sessions']}",
+        "",
+        "## Milestones",
+        "",
+    ]
+
+    for key in ("scale_1000", "research_100", "runtime_4", "task_4", "fan_in_10", "branch_collapse_10", "multi_root_10"):
+        item = milestones[key]
+        lines.append(
+            f"- {item['label']}: {item['current']}/{item['target']} (remaining {item['remaining']})"
+        )
+
+    lines.extend([
+        "",
+        "## Coverage",
+        "",
+        "- explicit runtime counts:",
+    ])
+
+    runtime_counts = summary["runtime_counts"]
+    if runtime_counts:
+        for label, count in sorted(runtime_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"  - {label}: {count}")
+    else:
+        lines.append("  - none")
+
+    lines.append("- task type counts:")
+    task_counts = summary["task_type_counts"]
+    if task_counts:
+        for label, count in sorted(task_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"  - {label}: {count}")
+    else:
+        lines.append("  - none")
+
+    lines.append("- topology counts:")
+    topo_counts = summary["topology_counts"]
+    for label, count in sorted(topo_counts.items(), key=lambda x: (-x[1], x[0])):
+        lines.append(f"  - {label}: {count}")
+
+    lines.extend([
+        "",
+        "## Structural Signals",
+        "",
+        f"- long sessions (>=100 events): {summary['long_sessions_100']}",
+        f"- branchy sessions: {summary['branchy_sessions']}",
+        f"- frontier-wide sessions (max width >= 4): {summary['frontier_wide_sessions']}",
+        f"- retry-heavy sessions (retry density >= 0.2): {summary['retry_heavy_sessions']}",
+        f"- fan-in sessions: {summary['fan_in_sessions']}",
+        f"- branch-collapse sessions: {summary['branch_collapse_sessions']}",
+        f"- multi-root sessions (roots >= 5): {summary['multi_root_sessions']}",
+        "",
+        "## Missing Conditions",
+        "",
+        "- Need more metadata-rich sessions to make task/topology comparisons stable.",
+        "- Need explicit runtime labels across Claude, Codex, Aider, and OpenCode.",
+        "- Need more fan-in, branch-collapse, and multi-root exemplars to prevent the taxonomy from collapsing into mostly linear chains.",
+        "- Need a larger labeled corpus before treating topology-task correlations as stable.",
         "",
     ])
     return "\n".join(lines)

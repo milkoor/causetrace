@@ -185,6 +185,13 @@ causetrace critical-path <session_id>            # 最长局部因果链
 causetrace patterns <session_id> --json          # 结构化模式输出
 causetrace patterns <session_id> --csv           # 转移关系 CSV
 causetrace annotate <session_id> --task-type bug_fix --success
+causetrace metadata <session_id>                 # 标准化运行时元数据
+causetrace metadata-set <session_id> --runtime codex --model gpt-5
+causetrace corpus snapshot                       # 可复现的 corpus 快照
+causetrace corpus export                         # 数据集清单 JSON
+causetrace corpus groups --label task_type       # 按标签分组会话
+causetrace corpus health                         # 里程碑缺口与覆盖率
+causetrace report <session_id>                   # Markdown 研究模板
 causetrace compare <session_a> <session_b>
 ```
 
@@ -246,6 +253,13 @@ causetrace compare <session_a> <session_b>
 | `causetrace critical-path [<id>]` | 展示最长局部因果链 |
 | `causetrace patterns [<id>] [--json\|--csv]` | 分析因果路径和转移；CSV 输出转移表 |
 | `causetrace annotate <id> [...]` | 保存任务/来源/结果侧车元数据 |
+| `causetrace metadata <id>` | 查看标准化运行时元数据侧车 |
+| `causetrace metadata-set <id> [...]` | 设置运行时元数据字段 |
+| `causetrace corpus snapshot` | 生成可复现的 corpus 快照 |
+| `causetrace corpus export` | 导出 corpus 清单 JSON |
+| `causetrace corpus groups` | 按元数据标签分组会话 |
+| `causetrace corpus health` | 显示里程碑缺口与覆盖率 |
+| `causetrace report <id>` | 生成 Markdown 研究模板 |
 | `causetrace compare <a> <b>` | 对比两个会话的拓扑和转移 |
 | `causetrace doctor` | 诊断 Agent 配置和数据源状态 |
 | `causetrace demo` | 创建并查看自包含示例 trace |
@@ -286,6 +300,9 @@ causetrace compare <session_a> <session_b>
 | `causetrace/core.py` | 数据模型、`TraceRecorder`、`JSONStore`、树/DAG 构建、渲染器、`ReplayEngine` |
 | `causetrace/analysis.py` | 会话内拓扑、关键路径、窗口和因果模式分析 |
 | `causetrace/annotation.py` | 用于标注和比较流程的侧车元数据 |
+| `causetrace/metadata.py` | 标准化运行时元数据侧车 |
+| `causetrace/corpus.py` | corpus 快照、导出和分组辅助 |
+| `causetrace/report.py` | Markdown 研究报告模板 |
 | `causetrace/causality.py` | 非结构化日志的时间因果推断 |
 | `causetrace/cli.py` | argparse CLI，涵盖采集、分析、标注和诊断命令 |
 | `causetrace/hooks/` | 各 Agent 的桥接与监听器 |

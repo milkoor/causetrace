@@ -188,6 +188,13 @@ causetrace critical-path <session_id>            # Longest local causal chain
 causetrace patterns <session_id> --json          # Structured path/transition/fan-in output
 causetrace patterns <session_id> --csv           # Transitions CSV
 causetrace annotate <session_id> --task-type bug_fix --success
+causetrace metadata <session_id>                 # Standardized runtime metadata
+causetrace metadata-set <session_id> --runtime codex --model gpt-5
+causetrace corpus snapshot                       # Reproducible corpus snapshot
+causetrace corpus export                         # Dataset manifest JSON
+causetrace corpus groups --label task_type       # Group sessions by label
+causetrace corpus health                         # Milestone gaps and coverage
+causetrace report <session_id>                   # Markdown research template
 causetrace compare <session_a> <session_b>
 ```
 
@@ -250,6 +257,13 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace critical-path [<id>]` | Show longest local root-to-leaf chain |
 | `causetrace patterns [<id>] [--json\|--csv]` | Show causal paths and transitions; CSV exports transitions |
 | `causetrace annotate <id> [...]` | Store sidecar task/source/result metadata |
+| `causetrace metadata <id>` | Show standardized runtime metadata sidecars |
+| `causetrace metadata-set <id> [...]` | Set runtime metadata fields |
+| `causetrace corpus snapshot` | Capture a reproducible corpus snapshot |
+| `causetrace corpus export` | Export the corpus manifest as JSON |
+| `causetrace corpus groups` | Group sessions by a metadata label |
+| `causetrace corpus health` | Show milestone gaps and coverage |
+| `causetrace report <id>` | Generate a markdown research template |
 | `causetrace compare <a> <b>` | Compare topology and transitions across sessions |
 | `causetrace doctor` | Diagnose agent configuration and data sources |
 | `causetrace demo` | Create and inspect a self-contained sample trace |
@@ -290,6 +304,9 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace/core.py` | Data model, `TraceRecorder`, `JSONStore`, tree/DAG builders, renderers, `ReplayEngine` |
 | `causetrace/analysis.py` | Session-local topology, critical paths, windows, and causal patterns |
 | `causetrace/annotation.py` | Sidecar metadata for task labels and comparison workflows |
+| `causetrace/metadata.py` | Standardized runtime metadata sidecars |
+| `causetrace/corpus.py` | Corpus snapshot, export, and grouping helpers |
+| `causetrace/report.py` | Markdown research report templates |
 | `causetrace/causality.py` | Temporal causal inference for unstructured logs |
 | `causetrace/cli.py` | argparse CLI dispatching capture, analysis, annotation, and diagnostic commands |
 | `causetrace/hooks/` | Agent-specific bridges and tailers |

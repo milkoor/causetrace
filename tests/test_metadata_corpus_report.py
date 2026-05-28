@@ -13,6 +13,8 @@ from causetrace.annotation import save_annotation
 from causetrace.core import JSONStore, ToolEvent
 from causetrace.corpus import export_dataset, snapshot_corpus
 from causetrace.metadata import load_metadata, merge_metadata
+from causetrace.report import generate_corpus_health_report
+from causetrace.corpus import summarize_corpus_health
 
 
 def _write_session(store: JSONStore, session_id: str) -> None:
@@ -130,3 +132,56 @@ def test_compare_cli_includes_enhanced_sections(tmp_path):
     assert "Topology distance" in result.stdout
     assert "Branch distribution" in result.stdout
     assert "Root spawning" in result.stdout
+
+
+def test_corpus_health_report_reports_milestones(monkeypatch, tmp_path):
+    import causetrace.annotation as annotation
+    import causetrace.metadata as metadata
+
+    monkeypatch.setattr(annotation, "ANNOTATION_DIR", str(tmp_path / "meta"))
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "a")
+    _write_session(store, "b")
+    merge_metadata("a", {"runtime": "codex", "task_type": "bug_fix"})
+    save_annotation("b", {"task_type": "exploration", "source": "real_work"})
+
+    summary = summarize_corpus_health(store)
+    assert summary["session_count"] == 2
+    assert summary["metadata_sessions"] == 1
+    assert summary["annotated_sessions"] == 1
+    assert summary["milestones"]["scale_1000"]["remaining"] == 998
+    assert summary["milestones"]["research_100"]["current"] == 1
+    assert summary["task_type_counts"]["bug_fix"] == 1
+    assert summary["task_type_counts"]["exploration"] == 1
+
+    report = generate_corpus_health_report(store)
+    assert "# Corpus health report" in report
+    assert "## Milestones" in report
+    assert "Corpus scale" in report
+    assert "Need explicit runtime labels" in report
+
+
+def test_corpus_health_cli_writes_report(monkeypatch, tmp_path):
+    import causetrace.annotation as annotation
+    import causetrace.metadata as metadata
+
+    monkeypatch.setattr(annotation, "ANNOTATION_DIR", str(tmp_path / "meta"))
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "a")
+    merge_metadata("a", {"runtime": "codex", "task_type": "bug_fix"})
+
+    output = tmp_path / "health.md"
+    result = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "health", "--output", str(output)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+
+    assert result.returncode == 0
+    assert output.exists()
+    assert "Corpus health report written" in result.stdout

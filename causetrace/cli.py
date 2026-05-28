@@ -28,7 +28,7 @@ from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
 from .metadata import load_metadata, merge_metadata
 from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
-from .report import generate_report
+from .report import generate_report, generate_corpus_health_report
 
 try:
     from importlib.metadata import version as _import_version
@@ -270,6 +270,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_export.add_argument("--output", "-o", help="Output file (default: stdout)")
     p_cr_groups = p_cr_sub.add_parser("groups", help="Show labeled session groups")
     p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
+    p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
+    p_cr_health.add_argument("--output", "-o", help="Write report to file")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -1030,6 +1032,17 @@ def _handle_corpus(store, args) -> None:
         else:
             json.dump(dataset, sys.stdout, indent=2)
             print()
+        return
+
+    if args.corpus_command == "health":
+        report = generate_corpus_health_report(store)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report)
+            print(f"Corpus health report written: {args.output}")
+        else:
+            print(report)
         return
 
     records = list_corpus_records(store)

@@ -65,9 +65,9 @@ Attach: `docs/assets/demo-flow.svg` or a screenshot of `causetrace why` output
 
 ## Post 5 — Runnable release
 
-> causetrace v0.1.3 now has a zero-setup demo:
+> causetrace v0.2.0 now has a zero-setup demo:
 >
-> `pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.1.3"`
+> `pip install "causetrace @ git+https://github.com/milkoor/causetrace.git@v0.2.0"`
 > `causetrace demo`
 >
 > It creates a local causal DAG, renders the tree, and prints commands to

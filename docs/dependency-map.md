@@ -38,7 +38,8 @@ Zero intra-project dependencies. Operates on ToolEvent interfaces via duck-typin
 `connected_components`, `detect_repeated_paths`, `detect_common_transitions`,
 `detect_fan_in_patterns`, `detect_branch_collapse`, `windowed`,
 `transition_entropy`, `branch_density`, `root_spawning_rate`,
-`path_reuse_ratio`
+`path_reuse_ratio`, `detect_branch_persistence`, `compute_frontier_width`,
+`detect_retry_density`
 
 **Consumed by:**
 
@@ -75,6 +76,47 @@ Zero intra-project dependencies. Sidecar JSON metadata store for session task la
 | Consumer | What it uses |
 |----------|-------------|
 | `cli.py` | All 4 exports |
+
+## Layer 1.7: Metadata (`causetrace/metadata.py`)
+
+Zero intra-project dependencies. Standardized session runtime metadata sidecars.
+
+**Exports:** `SessionMetadata`, `load_metadata`, `save_metadata`, `merge_metadata`,
+`validate_metadata`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | All 5 exports |
+| `corpus.py` | `load_metadata` |
+| `report.py` | `load_metadata` |
+
+## Layer 1.8: Corpus (`causetrace/corpus.py`)
+
+Zero intra-project dependencies beyond core metadata and analysis primitives.
+
+**Exports:** `build_session_record`, `list_corpus_records`, `snapshot_corpus`,
+`export_dataset`, `group_labeled_sessions`, `summarize_corpus_health`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | All 5 exports |
+| `report.py` | `generate_corpus_health_report` |
+
+## Layer 1.9: Report (`causetrace/report.py`)
+
+Zero intra-project dependencies beyond analysis, metadata, and corpus helpers.
+
+**Exports:** `generate_report`, `generate_corpus_health_report`
+
+**Consumed by:**
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | `generate_report`, `generate_corpus_health_report` |
 
 ## Layer 2: Causality (`causetrace/causality.py`)
 
@@ -135,7 +177,7 @@ Zero intra-project dependencies. Sidecar JSON metadata store for session task la
 
 The CLI is the **single integration point** — it wires all hooks/parsers to user-facing commands.
 
-**Depends on:** `core`, `analysis`, `annotation`, `causality`, all hook/parser modules, `pathlib.Path`
+**Depends on:** `core`, `analysis`, `annotation`, `metadata`, `corpus`, `report`, `causality`, all hook/parser modules, `pathlib.Path`
 
 **Subcommands and their dispatch:**
 
@@ -166,6 +208,13 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `critical-path` | inline (uses `longest_path`) | analysis |
 | `patterns` | inline (uses pattern detectors; JSON/CSV output) | analysis |
 | `annotate` | `_handle_annotate()` | annotation |
+| `metadata` | `_handle_metadata()` | metadata |
+| `metadata-set` | `_handle_metadata_set()` | metadata |
+| `corpus snapshot` | `_handle_corpus()` | corpus |
+| `corpus export` | `_handle_corpus()` | corpus |
+| `corpus groups` | `_handle_corpus()` | corpus |
+| `corpus health` | `_handle_corpus()` | corpus, report |
+| `report` | `_handle_report()` | report |
 | `compare` | `_handle_compare()` | analysis, annotation |
 | `doctor` | `_run_doctor()` | cli (inline) |
 
@@ -196,6 +245,9 @@ core.py change          → EVERYTHING (all hooks, CLI, tests)
 causality.py change     → all 4 legacy tailers
 analysis.py change      → stats/roots/critical-path/patterns/compare + DAG tests
 annotation.py change    → annotate/compare commands
+metadata.py change      → metadata/report/corpus commands
+corpus.py change        → corpus commands and report command
+report.py change        → report command
 parser change           → cli.py + its specific command + its specific test file
 tailer change           → cli.py + its specific command + its tests
 cli.py change           → no modules depend on it (it's the sink)
