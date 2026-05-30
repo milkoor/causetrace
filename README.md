@@ -214,6 +214,7 @@ session marks a local boundary, so its child is analyzed as a local root.
 - [Codex CLI rollout parsing case study](docs/case-studies/codex-rollout-parser.md)
 - [Claude Code hook causality failure observation](examples/traces/failures/observations-claude-code-hooks.md)
 - [Runtime research notes](docs/research-notes/README.md)
+- [Research index](docs/research/README.md)
 - [Project principles](docs/project-principles.md)
 
 ---

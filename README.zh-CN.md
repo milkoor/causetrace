@@ -210,6 +210,7 @@ causetrace compare <session_a> <session_b>
 - [Codex CLI rollout 解析案例](docs/case-studies/codex-rollout-parser.md)
 - [Claude Code hook 因果链失效观察](examples/traces/failures/observations-claude-code-hooks.md)
 - [运行时研究笔记](docs/research-notes/README.md)
+- [研究索引](docs/research/README.md)
 - [项目原则](docs/project-principles.md)
 
 ---
