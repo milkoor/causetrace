@@ -101,7 +101,7 @@ Zero intra-project dependencies beyond core metadata and analysis primitives.
 `verify_snapshot`, `verify_benchmark_manifest`, `compare_benchmark_manifests`,
 `build_topology_taxonomy`, `taxonomy_corpus`, `assess_phase3_readiness`,
 `infer_runtime_label`, `materialize_corpus_metadata`,
-`group_labeled_sessions`, `summarize_corpus_health`
+`group_labeled_sessions`, `summarize_corpus_health`, `build_corpus_source_facts`
 
 **Consumed by:**
 
@@ -114,7 +114,8 @@ Zero intra-project dependencies beyond core metadata and analysis primitives.
 
 Zero intra-project dependencies beyond analysis, metadata, and corpus helpers.
 
-**Exports:** `generate_report`, `generate_corpus_health_report`
+**Exports:** `generate_report`, `generate_corpus_health_report`,
+`generate_corpus_origin_report`
 
 **Consumed by:**
 
@@ -218,6 +219,7 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `corpus export` | `_handle_corpus()` | corpus |
 | `corpus groups` | `_handle_corpus()` | corpus |
 | `corpus health` | `_handle_corpus()` | corpus, report |
+| `corpus origins` | `_handle_corpus()` | corpus, report |
 | `corpus benchmark` | `_handle_corpus()` | corpus |
 | `corpus benchmark verify` | `_handle_corpus()` | corpus |
 | `corpus benchmark compare` | `_handle_corpus()` | corpus |

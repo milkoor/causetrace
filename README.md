@@ -194,6 +194,7 @@ causetrace corpus snapshot                       # Reproducible corpus snapshot
 causetrace corpus export                         # Dataset manifest JSON
 causetrace corpus groups --label task_type       # Group sessions by label
 causetrace corpus health                         # Milestone gaps and coverage
+causetrace corpus origins                        # Source-origin coverage for Phase 3C
 causetrace corpus benchmark                      # Benchmark manifest by metadata label
 causetrace corpus benchmark verify <dir>         # Verify benchmark manifest integrity
 causetrace corpus benchmark compare <a> <b>      # Compare two benchmark manifests
@@ -213,6 +214,7 @@ session marks a local boundary, so its child is analyzed as a local root.
 - [Codex CLI rollout parsing case study](docs/case-studies/codex-rollout-parser.md)
 - [Claude Code hook causality failure observation](examples/traces/failures/observations-claude-code-hooks.md)
 - [Runtime research notes](docs/research-notes/README.md)
+- [Project principles](docs/project-principles.md)
 
 ---
 
@@ -269,6 +271,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace corpus export` | Export the corpus manifest as JSON |
 | `causetrace corpus groups` | Group sessions by a metadata label |
 | `causetrace corpus health` | Show milestone gaps and coverage |
+| `causetrace corpus origins` | Show source-origin coverage for Phase 3C planning |
 | `causetrace corpus benchmark` | Build a benchmark manifest from corpus labels |
 | `causetrace corpus benchmark verify <dir>` | Verify benchmark manifest integrity |
 | `causetrace corpus benchmark compare <a> <b>` | Compare two benchmark manifests |

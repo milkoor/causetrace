@@ -10,7 +10,7 @@ from .analysis import (
     find_roots,
     longest_path,
 )
-from .corpus import assess_phase3_readiness, summarize_corpus_health
+from .corpus import assess_phase3_readiness, build_corpus_source_facts, summarize_corpus_health
 from .core import _fmt_input
 from .metadata import load_metadata, load_metadata_provenance
 
@@ -316,6 +316,107 @@ def generate_corpus_health_report(store) -> str:
         "- Need explicit runtime labels across Claude, Codex, Aider, and OpenCode.",
         "- Need more fan-in, branch-collapse, and multi-root exemplars to prevent the taxonomy from collapsing into mostly linear chains.",
         "- Need a larger labeled corpus before treating topology-task correlations as stable.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def generate_corpus_origin_report(store) -> str:
+    """Render a markdown report for corpus source-origin coverage."""
+    summary = build_corpus_source_facts(store)
+    task_source_counts = summary.get("task_source_counts", {})
+    lane_hint_counts: dict[str, int] = {}
+    lane_hints = {
+        "demo": "demo-lane candidate (keep separate from controlled_benchmark)",
+        "real_work": "native candidate",
+        "proxy": "proxy-mediated candidate",
+        "unknown": "manual classification needed",
+    }
+    for source, count in task_source_counts.items():
+        hint = lane_hints.get(source, "manual classification needed")
+        lane_hint_counts[hint] = lane_hint_counts.get(hint, 0) + count
+
+    lines: list[str] = [
+        "# Corpus origin report",
+        "",
+        "## Snapshot",
+        "",
+        f"- sessions: {summary['session_count']}",
+        f"- data-origin labeled sessions: {sum(summary['data_origin_counts'].values())}",
+        f"- missing data_origin: {summary['missing_data_origin']}",
+        "",
+        "## Data Origin Counts",
+        "",
+    ]
+
+    data_origin_counts = summary.get("data_origin_counts", {})
+    if data_origin_counts:
+        for label, count in sorted(data_origin_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"- {label}: {count}")
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Data Origin Provenance",
+        "",
+    ])
+    provenance_counts = summary.get("data_origin_provenance_counts", {})
+    if provenance_counts:
+        for label, count in sorted(provenance_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"- {label}: {count}")
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Task Source Counts",
+        "",
+    ])
+    if task_source_counts:
+        for label, count in sorted(task_source_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"- {label}: {count}")
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Task Source Lane Hints",
+        "",
+    ])
+    if lane_hint_counts:
+        for label, count in sorted(lane_hint_counts.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"- {label}: {count}")
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Missing Data Origin Candidates",
+        "",
+    ])
+    missing_sessions = summary.get("missing_data_origin_sessions", [])
+    if missing_sessions:
+        for item in missing_sessions:
+            parts = [
+                f"runtime={item['runtime'] or 'unknown'}",
+                f"task_type={item['task_type'] or 'unknown'}",
+                f"task_source={item['task_source'] or 'unknown'}",
+                f"success={item['success'] if item['success'] != '' else 'unknown'}",
+                f"topology={item['topology'] or 'unknown'}",
+                f"score={item['score']}",
+            ]
+            lines.append(f"- {item['session_id']}: " + "; ".join(parts))
+    else:
+        lines.append("- none")
+
+    lines.extend([
+        "",
+        "## Phase 3C Guidance",
+        "",
+        "- Treat data_origin as a top-level source tier, separate from task_source.",
+        "- Keep native corpus, controlled benchmark corpus, and external trajectories in separate provenance lanes.",
+        "- Prefer labeling missing data_origin on research-grade sessions before adding new taxonomy labels.",
         "",
     ])
     return "\n".join(lines)

@@ -31,8 +31,9 @@ causetrace demo
 
 ```bash
 causetrace timeline [session_id]    # Flat chronological view
-causetrace tree [session_id]        # Causal parent→child tree
+causetrace tree [session_id]            # Causal parent→child tree
 causetrace tree [session_id] --quality  # Tree with causal quality report
+causetrace tree [session_id] --compress # Compress consecutive same-tool runs ([×N])
 causetrace graph [session_id]       # Multi-parent DAG (fan-in)
 causetrace sessions                 # List recorded sessions
 causetrace export <session_id>      # Export as JSON
@@ -150,7 +151,7 @@ python3 tools/promote.py devto-post docs/promotion/blog_<topic>.md
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **causetrace** (1796 symbols, 3056 relationships, 116 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **causetrace** (2160 symbols, 3824 relationships, 164 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

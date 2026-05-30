@@ -378,6 +378,70 @@ def build_corpus_facts(store: JSONStore) -> dict[str, Any]:
     }
 
 
+def build_corpus_source_facts(store: JSONStore) -> dict[str, Any]:
+    """Collect corpus source-origin facts for Phase 3C planning."""
+    records = list_corpus_records(store)
+    if not records:
+        return {
+            "session_count": 0,
+            "data_origin_counts": {},
+            "data_origin_provenance_counts": {},
+            "task_source_counts": {},
+            "missing_data_origin": 0,
+            "missing_data_origin_sessions": [],
+        }
+
+    data_origin_counts: Counter[str] = Counter()
+    data_origin_provenance_counts: Counter[str] = Counter()
+    task_source_counts: Counter[str] = Counter()
+    missing_candidates: list[dict[str, Any]] = []
+
+    for record in records:
+        sid = record["session_id"]
+        metadata = record.get("metadata", {})
+        provenance = record.get("metadata_provenance", {})
+        data_origin = metadata.get("data_origin")
+        task_source = metadata.get("task_source") or ""
+
+        if data_origin in (None, "", [], {}):
+            score = sum(
+                1
+                for field in ("runtime", "task_type", "task_source", "success")
+                if metadata.get(field) not in (None, "", [], {})
+            )
+            missing_candidates.append({
+                "session_id": sid,
+                "runtime": metadata.get("runtime", ""),
+                "task_type": metadata.get("task_type", ""),
+                "task_source": task_source,
+                "success": metadata.get("success", ""),
+                "topology": record.get("topology", ""),
+                "score": score,
+            })
+        else:
+            data_origin_counts[str(data_origin)] += 1
+            data_origin_provenance_counts[str(provenance.get("data_origin") or "unknown")] += 1
+
+        if task_source:
+            task_source_counts[str(task_source)] += 1
+
+    missing_candidates.sort(
+        key=lambda item: (
+            -item["score"],
+            item["session_id"],
+        )
+    )
+
+    return {
+        "session_count": len(records),
+        "data_origin_counts": dict(data_origin_counts),
+        "data_origin_provenance_counts": dict(data_origin_provenance_counts),
+        "task_source_counts": dict(task_source_counts),
+        "missing_data_origin": len(missing_candidates),
+        "missing_data_origin_sessions": missing_candidates[:10],
+    }
+
+
 def _build_corpus_milestones(facts: dict[str, Any]) -> dict[str, dict[str, int | str]]:
     """Build milestone counters from a corpus-facts payload."""
     return {

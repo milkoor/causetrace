@@ -13,7 +13,7 @@ from causetrace.annotation import save_annotation
 from causetrace.core import JSONStore, ToolEvent
 from causetrace.corpus import Phase3ReadinessRequirements, assess_phase3_readiness, benchmark_corpus, build_corpus_facts, compare_benchmark_manifests, export_dataset, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
 from causetrace.metadata import load_metadata, load_metadata_provenance, merge_metadata
-from causetrace.report import generate_corpus_health_report, generate_phase3_readiness_report
+from causetrace.report import generate_corpus_health_report, generate_corpus_origin_report, generate_phase3_readiness_report
 from causetrace.corpus import summarize_corpus_health
 
 
@@ -33,19 +33,22 @@ def test_metadata_merges_legacy_annotation(monkeypatch, tmp_path):
     monkeypatch.setattr(annotation, "ANNOTATION_DIR", str(tmp_path / "meta"))
     monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
 
-    save_annotation("s1", {"task_type": "bug_fix", "source": "real_work", "success": True})
+    save_annotation("s1", {"task_type": "bug_fix", "source": "real_work", "success": True, "data_origin": "native"})
     merged = load_metadata("s1")
     assert merged.task_type == "bug_fix"
     assert merged.task_source == "real_work"
     assert merged.success is True
+    assert merged.data_origin == "native"
 
     provenance = load_metadata_provenance("s1")
     assert provenance["task_type"] == "annotation"
     assert provenance["task_source"] == "annotation"
     assert provenance["success"] == "annotation"
+    assert provenance["data_origin"] == "annotation"
 
-    updated = merge_metadata("s1", {"runtime": "codex", "model": "gpt-5"})
+    updated = merge_metadata("s1", {"runtime": "codex", "model": "gpt-5", "data_origin": "native"})
     assert updated.runtime == "codex"
+    assert updated.data_origin == "native"
     assert load_metadata("s1").model == "gpt-5"
 
 
@@ -636,6 +639,52 @@ def test_corpus_health_cli_writes_report(monkeypatch, tmp_path):
     assert result.returncode == 0
     assert output.exists()
     assert "Corpus health report written" in result.stdout
+
+
+def test_corpus_origin_report_and_cli(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "native")
+    _write_session(store, "benchmark")
+    merge_metadata("native", {
+        "data_origin": "native",
+        "runtime": "claude",
+        "task_type": "review",
+        "task_source": "real_work",
+        "success": True,
+    })
+    merge_metadata("benchmark", {
+        "data_origin": "controlled_benchmark",
+        "runtime": "codex",
+        "task_type": "bug_fix",
+        "task_source": "demo",
+        "success": False,
+    })
+
+    report = generate_corpus_origin_report(store)
+    assert "# Corpus origin report" in report
+    assert "## Data Origin Counts" in report
+    assert "native: 1" in report
+    assert "controlled_benchmark: 1" in report
+    assert "## Task Source Lane Hints" in report
+    assert "demo-lane candidate" in report
+    assert "## Missing Data Origin Candidates" in report
+    assert "## Phase 3C Guidance" in report
+
+    output = tmp_path / "origins.md"
+    result = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "origins", "--output", str(output)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+
+    assert result.returncode == 0
+    assert output.exists()
+    assert "Corpus origin report written" in result.stdout
 
 
 def test_corpus_verify_cli(monkeypatch, tmp_path):

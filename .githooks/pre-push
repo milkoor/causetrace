@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python3 tools/validate_public_cross_project_prompt_morphology.py

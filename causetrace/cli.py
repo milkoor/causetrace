@@ -28,7 +28,7 @@ from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
 from .metadata import load_metadata, merge_metadata
 from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
-from .report import generate_report, generate_corpus_health_report, generate_phase3_readiness_report
+from .report import generate_report, generate_corpus_health_report, generate_corpus_origin_report, generate_phase3_readiness_report
 
 try:
     from importlib.metadata import version as _import_version
@@ -287,6 +287,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
     p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
     p_cr_health.add_argument("--output", "-o", help="Write report to file")
+    p_cr_origins = p_cr_sub.add_parser("origins", help="Show corpus source-origin coverage for Phase 3C planning")
+    p_cr_origins.add_argument("--output", "-o", help="Write report to file")
     p_cr_readiness = p_cr_sub.add_parser("readiness", help="Show phase-3 research readiness and blockers")
     p_cr_readiness.add_argument("--output", "-o", help="Write report to file")
     p_cr_materialize = p_cr_sub.add_parser("materialize", help="Materialize canonical metadata sidecars from annotations and runtime hints")
@@ -1060,6 +1062,17 @@ def _handle_corpus(store, args) -> None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(report)
             print(f"Corpus health report written: {args.output}")
+        else:
+            print(report)
+        return
+
+    if args.corpus_command == "origins":
+        report = generate_corpus_origin_report(store)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report)
+            print(f"Corpus origin report written: {args.output}")
         else:
             print(report)
         return

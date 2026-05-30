@@ -191,6 +191,7 @@ causetrace corpus snapshot                       # 可复现的 corpus 快照
 causetrace corpus export                         # 数据集清单 JSON
 causetrace corpus groups --label task_type       # 按标签分组会话
 causetrace corpus health                         # 里程碑缺口与覆盖率
+causetrace corpus origins                        # Phase 3C 的来源覆盖率
 causetrace corpus benchmark                      # 按元数据标签生成 benchmark manifest
 causetrace corpus benchmark verify <dir>         # 校验 benchmark manifest 完整性
 causetrace corpus benchmark compare <a> <b>      # 对比两个 benchmark manifest
@@ -209,6 +210,7 @@ causetrace compare <session_a> <session_b>
 - [Codex CLI rollout 解析案例](docs/case-studies/codex-rollout-parser.md)
 - [Claude Code hook 因果链失效观察](examples/traces/failures/observations-claude-code-hooks.md)
 - [运行时研究笔记](docs/research-notes/README.md)
+- [项目原则](docs/project-principles.md)
 
 ---
 
@@ -265,6 +267,7 @@ causetrace compare <session_a> <session_b>
 | `causetrace corpus export` | 导出 corpus 清单 JSON |
 | `causetrace corpus groups` | 按元数据标签分组会话 |
 | `causetrace corpus health` | 显示里程碑缺口与覆盖率 |
+| `causetrace corpus origins` | 显示 Phase 3C 的来源覆盖率 |
 | `causetrace corpus benchmark` | 基于 corpus 标签生成 benchmark manifest |
 | `causetrace corpus benchmark verify <dir>` | 校验 benchmark manifest 完整性 |
 | `causetrace corpus benchmark compare <a> <b>` | 对比两个 benchmark manifest |

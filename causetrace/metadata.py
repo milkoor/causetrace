@@ -27,8 +27,16 @@ _PROVENANCE_VALUES = {
     "unknown",
 }
 
+_DATA_ORIGINS = {
+    "native",
+    "controlled_benchmark",
+    "external_trajectory",
+    "unknown",
+}
+
 _VALID_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _FIELDS = {
+    "data_origin",
     "runtime",
     "model",
     "task_type",
@@ -45,6 +53,7 @@ _FIELDS = {
 class SessionMetadata:
     """Comparable runtime context for a trace session."""
 
+    data_origin: str | None = None
     runtime: str | None = None
     model: str | None = None
     task_type: str | None = None
@@ -113,6 +122,8 @@ def validate_metadata(metadata: SessionMetadata | dict[str, Any]) -> SessionMeta
     """Validate and normalize metadata fields."""
     meta = metadata if isinstance(metadata, SessionMetadata) else SessionMetadata.from_dict(metadata)
 
+    if meta.data_origin is not None and meta.data_origin not in _DATA_ORIGINS:
+        raise ValueError(f"Unknown data_origin: {meta.data_origin}")
     if meta.task_type is not None and meta.task_type not in TASK_TYPES:
         raise ValueError(f"Unknown task_type: {meta.task_type}")
     if meta.task_source is not None and meta.task_source not in SOURCES:
@@ -140,7 +151,7 @@ def _load_sidecar(session_id: str) -> dict[str, Any]:
 def _annotation_metadata(session_id: str) -> dict[str, Any]:
     annotation = load_annotation(session_id)
     mapped: dict[str, Any] = {}
-    for key in ("runtime", "model", "task_type", "success", "duration", "human_intervention"):
+    for key in ("data_origin", "runtime", "model", "task_type", "success", "duration", "human_intervention"):
         if key in annotation:
             mapped[key] = annotation[key]
     if "task_source" in annotation:
