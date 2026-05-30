@@ -135,6 +135,14 @@ Detailed project-level execution records are kept outside the public `causetrace
 - [prompt-routing](https://github.com/milkoor/prompt-routing-skill) provides the prompt-posture routing skill used to apply these findings in real agent workflows.
 - It pairs with `causetrace` by selecting the prompt posture first and measuring the resulting morphology here.
 
+## Prompt-Routing Intervention Lane
+
+When this branch's findings are applied through `prompt-routing-skill`, treat the resulting sessions as a routed intervention lane:
+
+- record that prompt posture selection was applied
+- keep the routed lane separate from native direct-prompt traces
+- compare morphology before generalizing the effect to any project workflow
+
 ## Public Export Workflow
 
 Generate the public tree from a private source tree with:
