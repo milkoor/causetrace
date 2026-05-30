@@ -130,6 +130,11 @@ Cross-project synthesis may compare trends only.
 This public research branch intentionally redacts external project names, raw task details, exact business data, script paths, and raw session identifiers.
 Detailed project-level execution records are kept outside the public `causetrace` repository.
 
+## Related Skill Repo
+
+- [prompt-routing](https://github.com/milkoor/prompt-routing-skill) provides the prompt-posture routing skill used to apply these findings in real agent workflows.
+- It pairs with `causetrace` by selecting the prompt posture first and measuring the resulting morphology here.
+
 ## Public Export Workflow
 
 Generate the public tree from a private source tree with:
