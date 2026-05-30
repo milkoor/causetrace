@@ -15,9 +15,11 @@ It does not replace the registry, the validation protocol, or the acquisition pl
 
 ## Corpus Baseline
 
-- sessions: `977`
+- sessions: `980`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
+- data_origin labeled sessions: `980`
+- missing data_origin: `0`
 - data_origin coverage: `100%`
 - native failure sessions: `1/100`
 - native human_intervention=true sessions: `5/100`

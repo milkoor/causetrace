@@ -6,8 +6,8 @@ Tier 2 remains acquisition-only until the failure / near-failure / intervention 
 
 ## Current Corpus Baseline
 
-- sessions: `977`
-- events: `26343`
+- sessions: `980`
+- events: `27389`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - native failure: `1`
@@ -17,6 +17,7 @@ Tier 2 remains acquisition-only until the failure / near-failure / intervention 
 - explicit AskUserQuestion intervention examples:
   - `e68b4fe5-0034-4acf-877d-954e6287e00b`
   - `908184bd-5602-4f6b-97e1-36293069d20f`
+- controlled_benchmark pilot sessions: `3`
 
 ## Sprint Goal
 

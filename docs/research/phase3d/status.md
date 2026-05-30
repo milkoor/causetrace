@@ -15,11 +15,13 @@ It is the hypothesis registry layer for runtime morphology research. It follows 
 
 ## Current Corpus Baseline
 
-- sessions: `977`
-- events: `26293`
+- sessions: `980`
+- events: `27389`
 - ready: `True`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
+- data_origin labeled sessions: `980`
+- missing data_origin: `0`
 - data_origin coverage: `100%`
 
 ## Phase 3D Documents
@@ -48,6 +50,7 @@ It is the hypothesis registry layer for runtime morphology research. It follows 
 - Additional AskUserQuestion-backed human-intervention examples exist outside the native lane: `e68b4fe5-0034-4acf-877d-954e6287e00b` and `908184bd-5602-4f6b-97e1-36293069d20f`.
 - A single proxy-mediated failure candidate exists outside the native lane: `7de9a576-5306-4f0b-8950-53938c6b8dd9`.
 - Strong native near-failure candidates have been identified, but they remain success cases and do not increase failure coverage.
+- Three controlled-benchmark pilot sessions have been labeled with `data_origin=controlled_benchmark` and remain separate from the native lane.
 - Tier 2 remains acquisition-only until the failure / intervention subset grows.
 - Human-intervention acquisition target has been met for the current native lane.
 

@@ -7,10 +7,12 @@ Tier 2 covers failure / near-failure morphology and human intervention morpholog
 ## Corpus Context
 
 - corpus version: v0.2.5
-- corpus snapshot baseline: sessions `977`
+- corpus snapshot baseline: sessions `980`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - lane scope: native lane
+- data_origin labeled sessions: `980`
+- missing data_origin sessions: `0`
 
 ## Tier 2 Hypothesis Group
 
@@ -70,6 +72,7 @@ Tier 2 is not yet ready for full validation.
 - Human-intervention coverage now has positive examples in the native lane, but it is still too sparse for stable morphology comparisons.
 - The single native failure example is insufficient to separate failure morphology from idiosyncratic session behavior.
 - The current corpus can register Tier 2 hypotheses, but it cannot yet support strong or even moderately stable descriptive checks for the whole group.
+- Three controlled-benchmark pilot sessions exist, but they do not alter the native Tier 2 readiness gate.
 
 ## What Can Be Said Now
 

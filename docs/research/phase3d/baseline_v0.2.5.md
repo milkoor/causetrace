@@ -6,11 +6,13 @@ It is not a validation result and it is not a conclusion. It is the starting poi
 
 ## Corpus Snapshot
 
-- sessions: `976`
-- events: `26033`
+- sessions: `980`
+- events: `27389`
 - ready: `True`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
+- data_origin labeled sessions: `980`
+- missing data_origin: `0`
 - data_origin coverage: `100%`
 - runtime breadth: `7`
 - task breadth: `9`
