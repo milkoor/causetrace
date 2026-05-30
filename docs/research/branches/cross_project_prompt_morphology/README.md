@@ -142,6 +142,9 @@ When this branch's findings are applied through `prompt-routing-skill`, treat th
 - record that prompt posture selection was applied
 - keep the routed lane separate from native direct-prompt traces
 - compare morphology before generalizing the effect to any project workflow
+- routed traces are workflow interventions, not natural baseline prompts
+- direct-prompt native traces remain the only native direct baseline
+- expanded prompt study traces stay in the controlled / intervention lane
 
 ## Public Export Workflow
 

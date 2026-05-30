@@ -30,6 +30,24 @@ This directory groups the research tracks and branch studies that sit alongside 
   - routed tasks should be treated as a distinct prompt-posture lane in later morphology analysis
   - use when the task framing itself is part of the experiment or workflow policy
 
+## Prompt Posture Lanes
+
+Treat prompt posture as a first-class experimental variable, not as part of the native baseline.
+
+| Type | Meaning | Mix into native direct-prompt conclusions? |
+| --- | --- | --- |
+| direct-prompt native trace | User/developer gave the agent a task directly | Yes, under native rules |
+| routed-prompt trace | `prompt-routing-skill` selected the posture first | No, not directly |
+| expanded prompt study trace | Controlled prompt morphology comparison | Controlled / intervention lane |
+| external trajectory | External data source | External lane |
+
+Rules:
+
+- `routed-prompt` is a workflow intervention, not an original natural prompt.
+- Keep direct and routed traces separate in analysis.
+- Do not merge routed traces into the native direct-prompt baseline.
+- If routed traces are analyzed, label them explicitly as routed.
+
 ## Boundary
 
 Branch studies and skills may inform hypotheses and workflow choices, but they do not change the `causetrace` core boundary by themselves.
