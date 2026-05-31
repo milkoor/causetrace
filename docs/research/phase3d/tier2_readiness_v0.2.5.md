@@ -7,11 +7,11 @@ Tier 2 covers failure / near-failure morphology and human intervention morpholog
 ## Corpus Context
 
 - corpus version: v0.2.5
-- corpus snapshot baseline: sessions `980`
+- corpus snapshot baseline: sessions `981`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - lane scope: native lane
-- data_origin labeled sessions: `980`
+- data_origin labeled sessions: `981`
 - missing data_origin sessions: `0`
 
 ## Tier 2 Hypothesis Group

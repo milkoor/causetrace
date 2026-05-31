@@ -6,8 +6,8 @@ Tier 2 remains acquisition-only until the failure / near-failure / intervention 
 
 ## Current Corpus Baseline
 
-- sessions: `980`
-- events: `27389`
+- sessions: `981`
+- events: `30024`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - native failure: `1`
