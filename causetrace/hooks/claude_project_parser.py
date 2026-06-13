@@ -108,6 +108,24 @@ def list_sessions() -> List[Dict[str, Any]]:
     return sessions
 
 
+def _detect_provider(model: Optional[str]) -> str:
+    """Infer LLM provider from model name."""
+    if not model:
+        return "anthropic"
+    m = model.lower()
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith("deepseek"):
+        return "deepseek"
+    if m.startswith("ark-") or m.startswith("doubao"):
+        return "bytedance"
+    if m.startswith("gpt-") or m.startswith("o1") or m.startswith("o3"):
+        return "openai"
+    if m.startswith("minimax"):
+        return "minimax"
+    return "anthropic"
+
+
 def parse_session(session_id: str) -> List[ToolEvent]:
     """Parse a Claude Code project session JSONL into causally-linked events.
 
@@ -147,6 +165,8 @@ def parse_session(session_id: str) -> List[ToolEvent]:
                     parent_event_id=last_event_id,
                     timestamp=obj.get("timestamp"),
                     model=msg.get("model"),
+                    provider=_detect_provider(msg.get("model")),
+                    agent="claude-code",
                 )
                 events.append(event)
                 last_event_id = event.event_id
@@ -162,6 +182,7 @@ def parse_session(session_id: str) -> List[ToolEvent]:
                     parent_event_id=last_event_id,
                     timestamp=obj.get("timestamp"),
                     model=msg.get("model"),
+                    provider=_detect_provider(msg.get("model")),
                     agent="claude-code",
                 )
                 events.append(event)
@@ -177,6 +198,8 @@ def parse_session(session_id: str) -> List[ToolEvent]:
                         parent_event_id=last_event_id,
                         timestamp=obj.get("timestamp"),
                         model=msg.get("model"),
+                        provider=_detect_provider(msg.get("model")),
+                        agent="claude-code",
                     )
                     events.append(event)
                     last_event_id = event.event_id

@@ -72,6 +72,7 @@ def main() -> None:
             parent_event_id=parent_id,
             model=_CC_MODEL,
             provider=_CC_PROVIDER,
+            agent="claude-code",
             duration_ms=duration,
         )
         _save_last_event_id(session_id, event.event_id)

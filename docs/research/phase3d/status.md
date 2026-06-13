@@ -3,6 +3,7 @@
 Phase 3D is active.
 
 It is the hypothesis registry layer for runtime morphology research. It follows the descriptive work in Phase 3A, 3B, and 3C.
+The next mainline stage is `Phase 3D-T2B: Intervention-aware Acquisition`, which continues Tier 2 acquisition while keeping workflow-intervention lanes separate from the native direct-prompt baseline.
 
 ## Current Position
 
@@ -15,14 +16,21 @@ It is the hypothesis registry layer for runtime morphology research. It follows 
 
 ## Current Corpus Baseline
 
-- sessions: `981`
-- events: `30024`
+- sessions: `1351`
+- events: `128534`
+- metadata sessions: `981`
+- annotated sessions: `53`
+- explicit runtime sessions: `179`
 - ready: `True`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - data_origin labeled sessions: `981`
 - missing data_origin: `0`
 - data_origin coverage: `100%`
+- agent field coverage: `100%` (inline on events)
+- provider field coverage: `99.8%` (inline on events)
+- runtime distribution: opencode `1131`, claude-code `179`, codex `29`, aider `2`
+- model distribution (top): doubao-seed-2.0-code `264`, deepseek-v4-pro `55`, gpt-5.4-mini `13`, gpt-5.5 `13`
 
 ## Phase 3D Documents
 
@@ -53,12 +61,33 @@ It is the hypothesis registry layer for runtime morphology research. It follows 
 - Three controlled-benchmark pilot sessions have been labeled with `data_origin=controlled_benchmark` and remain separate from the native lane.
 - Tier 2 remains acquisition-only until the failure / intervention subset grows.
 - Human-intervention acquisition target has been met for the current native lane.
+- Intervention lanes must stay separate from the native direct-prompt baseline.
 
 ## Operating Rule
 
 - Do not turn hypotheses into conclusions without corpus-backed validation.
 - Do not move into prediction, anomaly modeling, or automatic diagnosis.
 - Keep controlled benchmark and external trajectories in separate lanes.
+- Keep routed-prompt and superpowers workflow traces separate from direct-prompt native traces.
+- Do not move into Phase 4 yet.
+
+## Metadata Density Warning
+
+Current corpus scale is sufficient for validation-oriented work, but metadata density remains too low for stable theory finalization or default automation policy.
+
+Current gap summary (explicit sidecar metadata):
+
+- runtime missing: `1172`
+- task_type missing: `1186`
+- task_source missing: `1186`
+- success missing: `1189`
+- duration missing: `1351`
+- human_intervention missing: `1255`
+- model missing: `1331`
+- repo_language missing: `1331`
+- repo_size missing: `1331`
+
+Note: agent and provider fields are now populated inline on all events (100% / 99.8% coverage), distinct from sidecar metadata tracked here.
 
 ## Next Action
 
@@ -71,3 +100,4 @@ Continue Tier 2 acquisition:
 - non-native AskUserQuestion sessions have been marked as human_intervention=true, but they do not alter the native strict gate
 - proxy failure candidates may be reviewed separately, but they do not change the native strict readiness gate
 - follow the acquisition sprint note for the next batch of native samples
+- treat `direct_prompt_native`, `routed_prompt_intervention`, `superpowers_workflow_intervention`, and `controlled_prompt_morphology` as separate lanes in analysis

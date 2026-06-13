@@ -6,16 +6,20 @@ It is not a validation result and it is not a conclusion. It is the starting poi
 
 ## Corpus Snapshot
 
-- sessions: `981`
-- events: `30024`
+- sessions: `1351`
+- events: `128534`
 - ready: `True`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - data_origin labeled sessions: `981`
 - missing data_origin: `0`
 - data_origin coverage: `100%`
+- agent field coverage: `100%` (inline on events)
+- provider field coverage: `99.8%` (inline on events)
 - runtime breadth: `7`
 - task breadth: `9`
+- runtime counts: opencode `1131`, claude-code `179`, codex `29`, aider `2`
+- model counts (top): doubao-seed-2.0-code `264`, deepseek-v4-pro `55`, gpt-5.4-mini `13`, gpt-5.5 `13`
 
 ## Baseline Observations
 
@@ -25,6 +29,8 @@ It is not a validation result and it is not a conclusion. It is the starting poi
 - Runtime distribution is still uneven, with `anthropic` and `claude-code` accounting for most explicit runtime labels.
 - Task distribution is still uneven, with `debug_test`, `feature_add`, `exploration`, and `review` dominating the labeled subset.
 - Failure and human-intervention coverage remain limited relative to the overall corpus, so failure morphology and intervention morphology should be treated as weaker, later-stage candidates.
+- Agent and provider fields are now populated inline on 100% / 99.8% of events (v0.2.5 parser fix), enabling reliable per-event runtime attribution for the first time.
+- Claude Code sessions predominantly use deepseek-v4-pro as the underlying model (via proxy), with doubao-seed-2.0-code as secondary.
 
 ## Tier 1 Hypotheses To Check First
 
