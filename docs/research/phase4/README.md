@@ -61,6 +61,7 @@ Every candidate must include:
 
 ## Documents
 
+- [Runtime Morphology Theory Draft v0.1](runtime_morphology_theory_draft_v0.1.md) — Consolidated theory draft: supported claims, caveated claims, exploratory directions, deferred claims, boundaries, blockers, upgrade path
 - [Evidence Grading Matrix](evidence_grading_matrix_v0.2.5.md) — Systematic evidence-grade review of all 12 candidates with blockers, promotion conditions, and falsification conditions
 - [Theory Candidate Inventory](theory_candidate_inventory_v0.2.5.md) — All current theory candidates with evidence grades, supporting data, and caveats
 - [Safety-Control Runtime Morphology](safety_control_morphology_candidates_v0.2.5.md) — Phase 4 theory candidate direction studying runtime control morphology at safety boundaries (exploratory, not validated)
@@ -81,10 +82,12 @@ Every candidate must include:
 
 ## Current State
 
-Phase 4-1 (evidence grading pass) is active. Three documents published:
+Phase 4-1 (evidence grading pass): **complete**. Phase 4-2 (theory draft skeleton): **active**.
 
-- **Evidence grading matrix**: systematic review of all 12 candidates with blockers, promotion conditions, and falsification conditions
+Four documents published:
+- **Runtime Morphology Theory Draft v0.1**: consolidated draft with supported/caveated/exploratory/deferred claims, boundaries, blockers, and upgrade path
+- **Evidence grading matrix**: systematic review of all 12 candidates
 - **Theory candidate inventory**: 12 candidates across 5 domains
-- **Safety-control runtime morphology**: 5 exploratory candidates defining the safety-control domain
+- **Safety-control runtime morphology**: 5 exploratory candidates
 
-Grade distribution: 2 `supported`, 1 `supported_with_caveat`, 6 `exploratory`, 3 `deferred`. Evidence ceiling: `supported`. No candidate exceeds its grade. No candidate carries policy recommendations. Phase 4 is in theory drafting and evidence grading, not final theory publication.
+Grade distribution: 2 `supported`, 1 `supported_with_caveat`, 6 `exploratory`, 3 `deferred`. Evidence ceiling: `supported`. No candidate exceeds its grade. Phase 4 is in theory drafting, not final theory publication.
