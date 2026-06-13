@@ -45,6 +45,9 @@ SOURCES = {
     "real_work": "Actual development work by the user",
     "demo": "Demo/example session for testing",
     "proxy": "Session routed through a proxy (e.g., DeepSeek)",
+    "routed_prompt_intervention": "Task framed by prompt-routing-skill; posture selected before execution",
+    "superpowers_workflow_intervention": "Structured workflow plugin (superpowers) changed execution shape",
+    "controlled_prompt_morphology": "Controlled prompt comparison, A/B/C variant, or pilot run",
     "unknown": "Unknown source",
 }
 

@@ -123,16 +123,19 @@ Maintain in registry for future corpus expansion.
 - [Intervention Validation Plan](intervention_validation_plan_v0.2.5.md) — Validation protocol, hypothesis allocation, readiness assessment (Phase 3E-1)
 - [Intervention Lane Annotation Plan](intervention_lane_annotation_plan_v0.2.5.md) — Annotation criteria, non-inference rule, process (Phase 3E-2)
 - [Intervention Lane Candidates](intervention_lane_candidates_v0.2.5.md) — Candidate review table with evidence and decisions (Phase 3E-2)
+- [Intervention Capture Instrumentation Plan](intervention_capture_instrumentation_plan_v0.2.5.md) — Capture requirements, tag format specs, enrichment recognition plan (Phase 3E-3)
 
 ## Current State
 
-Phase 3E-2 (intervention lane annotation pass) is in progress.
+Phase 3E-3 (intervention capture instrumentation) is in progress.
 
-| Lane | Sessions | Status |
-|------|----------|--------|
-| `direct_prompt_native` | 101 | baseline-ready |
-| `superpowers_workflow_intervention` | 3 | annotated (was 0) |
-| `controlled_prompt_morphology` | 3 | preserved |
-| `routed_prompt_intervention` | 0 | no candidates found |
+`SOURCES` expanded in `causetrace/annotation.py` to accept `routed_prompt_intervention`, `superpowers_workflow_intervention`, `controlled_prompt_morphology`. These values are now valid for `causetrace metadata-set --task-source` and `causetrace annotate --source`.
 
-3 sessions annotated as `superpowers_workflow_intervention` (Skill + PlanMode evidence). 18 total Skill-tool sessions reviewed; 15 weak-evidence sessions deferred. 0 genuine `routed_prompt_intervention` candidates found — the `prompt-routing-skill` is deployed but its usage has not yet entered the causetrace corpus.
+Capture tag format specifications are documented for `prompt-routing-skill` and superpowers workflows. Tag emission is deferred to those tools. Causetrace-side tag detection (Phase 2 of instrumentation) activates when >=5 sessions carry the tags.
+
+| Lane | Sessions | Capture Status |
+|------|----------|---------------|
+| `direct_prompt_native` | 101 | baseline |
+| `superpowers_workflow_intervention` | 3 | manual annotation only |
+| `controlled_prompt_morphology` | 3 | manual annotation only |
+| `routed_prompt_intervention` | 0 | no capture path (requires prompt-routing-skill tag emission) |

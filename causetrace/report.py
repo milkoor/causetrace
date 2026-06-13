@@ -330,6 +330,9 @@ def generate_corpus_origin_report(store) -> str:
         "demo": "demo-lane candidate (keep separate from controlled_benchmark)",
         "real_work": "native candidate",
         "proxy": "proxy-mediated candidate",
+        "routed_prompt_intervention": "routed-prompt intervention lane (keep separate from native)",
+        "superpowers_workflow_intervention": "superpowers workflow intervention lane (keep separate from native)",
+        "controlled_prompt_morphology": "controlled prompt morphology lane (keep separate from native)",
         "unknown": "manual classification needed",
     }
     for source, count in task_source_counts.items():
