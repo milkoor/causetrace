@@ -296,6 +296,7 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
     p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
     p_cr_health.add_argument("--output", "-o", help="Write report to file")
+    p_cr_phase4 = p_cr_sub.add_parser("phase4-status", help="Show Phase 4-3 trigger status for evidence refresh gating")
     p_cr_origins = p_cr_sub.add_parser("origins", help="Show corpus source-origin coverage for Phase 3C planning")
     p_cr_origins.add_argument("--output", "-o", help="Write report to file")
     p_cr_readiness = p_cr_sub.add_parser("readiness", help="Show phase-3 research readiness and blockers")
@@ -1165,6 +1166,199 @@ def _print_lane_counts() -> None:
             print(f"{lane:45s} {lanes[lane]:8d} {lane_events[lane]:10d}")
 
 
+def _print_phase4_trigger_status() -> None:
+    """Print Phase 4-3 trigger status for evidence refresh gating.
+
+    Read-only. Reports all 8 triggers with current values, thresholds,
+    met/not-met status, affected candidates, and next actions.
+    """
+    import json
+    from collections import Counter
+
+    meta_dir = Path.home() / ".causetrace" / "metadata"
+    data_dir = Path.home() / ".causetrace" / "data"
+
+    # Gather corpus metrics
+    total_meta = 0
+    native_sessions = 0
+    native_strict = 0
+    sp_sessions = 0
+    sp_runtimes: set[str] = set()
+    routed_sessions = 0
+    controlled_sessions = 0
+    failure_count = 0
+    near_failure_count = 0
+    safety_annotated = 0
+    runtime_counts: Counter = Counter()       # native strict only (Trigger 7)
+    native_strict_runtimes_with_5 = 0
+    unlabeled = 0
+
+    for f in meta_dir.iterdir():
+        if not f.name.endswith(".json") or f.name.endswith(".provenance.json"):
+            continue
+        total_meta += 1
+        with open(f) as fh:
+            meta = json.load(fh)
+        ts = meta.get("task_source", "")
+        do = meta.get("data_origin", "")
+        rt = meta.get("runtime", "")
+
+        # Lane classification
+        if ts in ("superpowers_workflow_intervention",):
+            sp_sessions += 1
+            if rt:
+                sp_runtimes.add(rt)
+        elif ts == "routed_prompt_intervention":
+            routed_sessions += 1
+        elif ts == "controlled_prompt_morphology":
+            controlled_sessions += 1
+        elif ts == "real_work" or do in ("native", "real_work", "direct_prompt_native"):
+            native_sessions += 1
+            # Check for strict native
+            tags = meta.get("causetrace_tags", [])
+            il = meta.get("intervention_lane", "")
+            is_strict = bool(not tags and not il)
+            if is_strict:
+                native_strict += 1
+                if rt:
+                    runtime_counts[rt] += 1
+            if meta.get("success") is False:
+                failure_count += 1
+            if meta.get("human_intervention") is True:
+                near_failure_count += 1
+            if meta.get("causetrace_tags") or meta.get("intervention_evidence_source"):
+                safety_annotated += 1
+        else:
+            unlabeled += 1
+
+    # Count runtimes with >=5 native strict sessions
+    for c in runtime_counts.values():
+        if c >= 5:
+            native_strict_runtimes_with_5 += 1
+
+    # Count data sessions
+    data_sessions = sum(1 for f in data_dir.iterdir() if f.name.endswith(".jsonl"))
+
+    trigger_results: list[dict] = []
+
+    # Trigger 1: Native strict growth
+    t1_current = native_strict
+    t1_threshold = 150
+    t1_met = t1_current >= t1_threshold
+    trigger_results.append({
+        "id": "1", "name": "Native strict growth",
+        "current": str(t1_current), "threshold": str(t1_threshold),
+        "met": t1_met,
+        "affected": "T-RM-001, T-RM-002, T-RM-003",
+        "action": "Re-run topology distribution against expanded native strict set."
+    })
+
+    # Trigger 2: Failure/near-failure threshold
+    t2_current = f"failure={failure_count}, near-failure={near_failure_count}"
+    t2_met = failure_count >= 10 and near_failure_count >= 10
+    trigger_results.append({
+        "id": "2", "name": "Failure/near-failure threshold",
+        "current": t2_current, "threshold": "failure>=10, near>=10",
+        "met": t2_met,
+        "affected": "T-FM-001, T-SC-004, T-SC-005",
+        "action": "Reopen Tier 2 failure/intervention validation."
+    })
+
+    # Trigger 3: Routed gate
+    t3_met = routed_sessions >= 5
+    trigger_results.append({
+        "id": "3", "name": "Routed-prompt gate",
+        "current": str(routed_sessions), "threshold": ">=5 tagged",
+        "met": t3_met,
+        "affected": "T-RP-001",
+        "action": "Open routed lane for basic characterization."
+    })
+
+    # Trigger 4: Controlled prompt expansion
+    t4_met = controlled_sessions >= 10
+    trigger_results.append({
+        "id": "4", "name": "Controlled prompt expansion",
+        "current": str(controlled_sessions), "threshold": ">=10 with variant tags",
+        "met": t4_met,
+        "affected": "T-PM-001",
+        "action": "Characterize per-variant topology."
+    })
+
+    # Trigger 5: SP lane growth
+    t5_current = f"{sp_sessions} sessions, {len(sp_runtimes)} runtimes"
+    t5_met = sp_sessions >= 15 and len(sp_runtimes) >= 2
+    trigger_results.append({
+        "id": "5", "name": "Superpowers lane growth",
+        "current": t5_current, "threshold": ">=15 sessions, >=2 runtimes",
+        "met": t5_met,
+        "affected": "T-WI-001, T-SC-003",
+        "action": "Re-run SP lane event density distribution."
+    })
+
+    # Trigger 6: Safety-control annotation
+    t6_met = safety_annotated >= 10
+    trigger_results.append({
+        "id": "6", "name": "Safety-control annotation",
+        "current": str(safety_annotated), "threshold": ">=10 annotated sessions",
+        "met": t6_met,
+        "affected": "T-SC-001 through T-SC-005",
+        "action": "First safety-control morphology baseline."
+    })
+
+    # Trigger 7: Runtime balance (native strict lane only)
+    dominant_pct = max(runtime_counts.values()) / max(sum(runtime_counts.values()), 1) * 100 if runtime_counts else 100
+    t7_current = f"top runtime={dominant_pct:.0f}%, runtimes with >=5: {native_strict_runtimes_with_5}"
+    t7_met = dominant_pct < 60 and native_strict_runtimes_with_5 >= 4
+    trigger_results.append({
+        "id": "7", "name": "Runtime balance",
+        "current": t7_current, "threshold": "<60% single runtime, >=4 runtimes with >=5 sessions",
+        "met": t7_met,
+        "affected": "T-RM-001, T-RM-002, T-RM-003",
+        "action": "Test per-runtime topology distribution."
+    })
+
+    # Trigger 8: Metadata density
+    labeled = total_meta - unlabeled
+    pct_labeled = labeled / max(total_meta, 1) * 100
+    t8_current = f"{pct_labeled:.1f}% labeled ({labeled}/{total_meta})"
+    t8_met = pct_labeled >= 40
+    trigger_results.append({
+        "id": "8", "name": "Metadata density",
+        "current": t8_current, "threshold": ">=40% labeled, >=80% lane coverage",
+        "met": t8_met,
+        "affected": "All (indirect)",
+        "action": "Re-run lane-count with reduced unlabeled population."
+    })
+
+    met_count = sum(1 for t in trigger_results if t["met"])
+
+    # Print report
+    print("Phase 4-3 Trigger Status")
+    print(f"Corpus: {total_meta} metadata sessions, {data_sessions} data sessions")
+    print(f"Phase 4: frozen (4-1/4-2 complete, 4-3 trigger-gated)")
+    print(f"Phase 5: not open")
+    print()
+    print(f"{'#':>3s}  {'Trigger':40s} {'Current':>22s}  {'Threshold':30s}  {'Met':5s}")
+    print("-" * 107)
+    for t in trigger_results:
+        flag = "  YES" if t["met"] else "  no"
+        print(f"{t['id']:>3s}  {t['name']:40s} {t['current']:>22s}  {t['threshold']:30s}  {flag:5s}")
+    print("-" * 107)
+    print(f"\nTriggers met: {met_count}/8")
+    if met_count == 0:
+        print("Phase 4-3 remains closed. No evidence refresh trigger has fired.")
+    else:
+        print("Phase 4-3 should reopen for affected candidates only.")
+    print()
+    print("Affected candidates per trigger:")
+    for t in trigger_results:
+        if t["met"]:
+            print(f"  Trigger {t['id']}: {t['affected']}")
+            print(f"    → {t['action']}")
+    print()
+    print("Next check: opportunistic — run after significant corpus growth.")
+
+
 def _print_gate_status() -> None:
     """Print Phase 3E parser detection gate readiness table."""
     import json
@@ -1250,6 +1444,10 @@ def _handle_corpus(store, args) -> None:
             print(f"Corpus health report written: {args.output}")
         else:
             print(report)
+        return
+
+    if args.corpus_command == "phase4-status":
+        _print_phase4_trigger_status()
         return
 
     if args.corpus_command == "origins":
