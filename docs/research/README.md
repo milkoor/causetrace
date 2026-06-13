@@ -11,8 +11,8 @@ This directory groups the research tracks and branch studies that sit alongside 
 | Phase 3B | complete | Topology taxonomy |
 | Phase 3C | complete | Metadata & provenance |
 | [Phase 3D](phase3d/README.md) | **complete** | Hypothesis registry + Tier 1 validation |
-| [Phase 3E](phase3e/README.md) | **active** | Controlled transition & intervention-aware validation |
-| Phase 4 | **not open** | Theory finalization |
+| [Phase 3E](phase3e/README.md) | **complete** | Controlled transition & intervention-aware validation |
+| Phase 4 | **open** | Theory finalization |
 
 ## Current Corpus Snapshot
 
@@ -30,16 +30,9 @@ This directory groups the research tracks and branch studies that sit alongside 
 
 Phase 3D delivered the hypothesis registry (19 hypotheses, 8 categories), completed Tier 1 validation (3 supported, 1 inconclusive, 1 not supported), and honestly deferred Tier 2 (failure samples genuinely rare in real agent behavior: 1/100 native failure, 0/100 near-failure). See [closure report](phase3d/closure_report_v0.2.5.md).
 
-## Phase 3E Active Scope
+## Phase 3E Closure Summary
 
-Controlled transition and intervention-aware validation. Lanes kept separate:
-
-- `direct_prompt_native`
-- `routed_prompt_intervention`
-- `superpowers_workflow_intervention`
-- `controlled_prompt_morphology`
-
-Deferred hypotheses from Phase 3D Tier 2/3/4 carried forward. Tier 2 validation is opportunistic (background acquisition), not a phase gate. See [Phase 3E README](phase3e/README.md).
+Phase 3E delivered the intervention lane infrastructure (4 lanes, parser detection gate, auto-detection in enrichment), completed 3 sub-phases (baseline, annotation, instrumentation), opened the superpowers_workflow_intervention gate (5 tagged sessions), and honestly deferred Tier 2 validation (failure samples genuinely rare: 1/101 native failure, 5/101 near-failure). Phase 2 auto-detection is operational for superpowers lane. See [closure report](phase3e/closure_report_v0.2.5.md).
 
 ## Cross-project Branch Studies
 

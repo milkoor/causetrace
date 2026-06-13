@@ -5,8 +5,8 @@ Phase 3E validates selected runtime morphology hypotheses under controlled or in
 ## Position
 
 - Phase 3D: complete
-- Phase 3E: active
-- Phase 4: not open
+- Phase 3E: **complete**
+- Phase 4: open
 
 ## Mission
 
@@ -159,6 +159,7 @@ Premature parser detection on 1-2 samples risks encoding heuristic patterns that
 - [Intervention Lane Annotation Plan](intervention_lane_annotation_plan_v0.2.5.md) — Annotation criteria, non-inference rule, process (Phase 3E-2)
 - [Intervention Lane Candidates](intervention_lane_candidates_v0.2.5.md) — Candidate review table with evidence and decisions (Phase 3E-2)
 - [Intervention Capture Instrumentation Plan](intervention_capture_instrumentation_plan_v0.2.5.md) — Capture requirements, tag format specs, enrichment recognition plan (Phase 3E-3)
+- [Closure Report](closure_report_v0.2.5.md) — Phase 3E closure: deliverables, gate status, deferred hypotheses, graduation assessment
 
 ## Current State
 

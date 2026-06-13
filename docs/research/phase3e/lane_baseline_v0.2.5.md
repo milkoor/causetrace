@@ -4,21 +4,23 @@ This document records the first intervention-aware lane baseline for Phase 3E. I
 
 ## Corpus Snapshot
 
-- metadata sessions: `983`
-- events: `128,552`
-- strict research-grade sessions: `157`
-- native strict sessions: `100`
-- data_origin coverage: `100%`
+- metadata sessions: `992`
+- events: `131,952`
+- data sessions: `1,517`
+- runtime breadth: `7`
+- task breadth: `9`
 
 ## Lane Distribution
 
 | Lane | Sessions | Events | % of corpus |
 |------|----------|--------|-------------|
-| `direct_prompt_native` | 101 | 32,141 | 25.0% |
+| `direct_prompt_native` | 101 | 32,141 | 24.4% |
 | `controlled_prompt_morphology` | 3 | 135 | 0.1% |
+| `superpowers_workflow_intervention` | 8 | 42,465 | 32.2% |
 | `routed_prompt_intervention` | 0 | 0 | 0% |
-| `superpowers_workflow_intervention` | 0 | 0 | 0% |
-| unlabeled | 879 | ~96,276 | 74.9% |
+| unlabeled | 880 | 16,160 | 12.2% |
+
+Note: superpowers_workflow_intervention event count inflated by 3 large sessions (10K-19K events each) from Phase 3E-2 manual annotation. These sessions have no causetrace_tags in event content; classification is via metadata sidecar.
 
 ## Lane: `direct_prompt_native`
 
@@ -110,45 +112,48 @@ The `prompt-routing-skill` is deployed but routing metadata has not yet been pro
 
 ## Lane: `superpowers_workflow_intervention`
 
-No sessions explicitly labeled with `task_source=superpowers_workflow_intervention`.
+8 sessions labeled with `task_source=superpowers_workflow_intervention`. 5 carry explicit causetrace_tags in metadata sidecars (Phase 3E-3 headless runs); 3 were manually annotated during Phase 3E-2.
 
-Structured workflow plugins (superpowers) are in active use, but workflow intervention metadata has not yet been propagated into the causetrace metadata system. This lane is defined and scoped but carries zero labeled sessions at this baseline.
+| Metric | Value |
+|--------|-------|
+| Sessions | 8 |
+| Events | 42,465 |
+| Tagged (causetrace_tags in metadata) | 5 |
+| Untagged (manual annotation only) | 3 |
+| Evidence level: strong | 5 (tagged) |
+| Evidence level: moderate | 3 (manual) |
+| Agent | claude-code (8) |
+| Runtime | claude-code (8) |
+
+Note: event count inflated by 3 large sessions (10K-19K events each) from Phase 3E-2 annotation. The 5 tagged headless sessions are small (10-26 events each, except 7e8574ec at 1,180 events).
+
+Parser detection gate is OPEN for this lane. Phase 2 auto-detection in enrichment pipeline is operational.
 
 ## Unlabeled Sessions
 
-879 sessions (74.9% of metadata corpus) lack explicit lane labels. These sessions have `data_origin` set but do not match any of the four Phase 3E lane criteria:
-
-- No `direct_prompt_native` / `native` / `real_work` data_origin
-- No `controlled_benchmark` data_origin
-- No `routed_prompt_intervention` task_source
-- No `superpowers_workflow_intervention` task_source
-
-These sessions remain in the corpus but are excluded from lane-separated analysis until labeled.
+880 sessions lack explicit lane labels. These sessions have `data_origin` set but do not match any of the four Phase 3E lane criteria.
 
 ## Lane Comparison Summary
 
 | Metric | direct_prompt_native | controlled_prompt_morphology | routed_prompt_intervention | superpowers_workflow_intervention |
 |--------|---------------------|------------------------------|---------------------------|----------------------------------|
-| Sessions | 101 | 3 | 0 | 0 |
-| Events | 32,141 | 135 | 0 | 0 |
-| Avg events/session | 318 | 45 | - | - |
-| Long sessions | 38 | 0 | 0 | 0 |
-| AUQ sessions | 5 | 0 | 0 | 0 |
-| Human intervention | 5 | 0 | 0 | 0 |
-| Failure | 1 | 0 | 0 | 0 |
-| Agent breadth | 5 | 1 | 0 | 0 |
-| Runtime breadth | 6 | 0 | 0 | 0 |
-| Task breadth | 8 | 0 | 0 | 0 |
+| Sessions | 101 | 3 | 0 | 8 |
+| Events | 32,141 | 135 | 0 | 42,465 |
+| Tagged | N/A (native) | 0 | 0 | 5 |
+| Evidence: strong | N/A | 0 | 0 | 5 |
+| Evidence: moderate | N/A | 0 | 0 | 3 |
+| Agent breadth | 5 | 1 | 0 | 1 |
 
 ## Current Cautions
 
-- `direct_prompt_native` is the only lane with sufficient sample size for any hypothesis check.
+- `direct_prompt_native` is the only lane with sufficient sample size for statistical hypothesis checks.
+- `superpowers_workflow_intervention` (8 sessions) is dominated by 3 large manually-annotated sessions; descriptive observation only.
 - `controlled_prompt_morphology` (3 sessions) is too small for validation — it exists only as a lane marker.
-- `routed_prompt_intervention` and `superpowers_workflow_intervention` are definitionally scoped but carry no labeled data — they are placeholder lanes.
+- `routed_prompt_intervention` carries zero labeled sessions — it is a placeholder lane.
 - Do not merge intervention lanes into the native baseline.
-- Do not draw cross-lane conclusions when only one lane has data.
-- The 879 unlabeled sessions are not a lane — they are a labeling gap.
+- Do not draw cross-lane conclusions when only one lane has statistical mass.
+- The 880 unlabeled sessions are not a lane — they are a labeling gap.
 
 ## Next Action
 
-Establish a labeling pipeline so that `routed_prompt_intervention` and `superpowers_workflow_intervention` sessions accumulate in the corpus. Until then, Phase 3E validation is limited to within-lane analysis of `direct_prompt_native`.
+Phase 3E infrastructure is complete. Parser detection gate is OPEN for superpowers_workflow_intervention. Background acquisition continues for all lanes. Tier 2 validation deferred until native failure >= 10, near-failure >= 10. See [closure report](closure_report_v0.2.5.md).
