@@ -1,9 +1,8 @@
 # Phase 3D Status (v0.2.5)
 
-Phase 3D is active.
+Phase 3D is recommended for graduation. See [closure report](closure_report_v0.2.5.md) for full assessment.
 
-It is the hypothesis registry layer for runtime morphology research. It follows the descriptive work in Phase 3A, 3B, and 3C.
-The next mainline stage is `Phase 3D-T2B: Intervention-aware Acquisition`, which continues Tier 2 acquisition while keeping workflow-intervention lanes separate from the native direct-prompt baseline.
+It delivered the hypothesis registry layer for runtime morphology research. Tier 1 validation is complete. Tier 2 is deferred honestly (failure samples genuinely rare in real agent behavior, not an execution failure).
 
 ## Current Position
 
@@ -11,8 +10,8 @@ The next mainline stage is `Phase 3D-T2B: Intervention-aware Acquisition`, which
 - Phase 3A: complete
 - Phase 3B: complete
 - Phase 3C: complete
-- Phase 3D: active
-- Phase 3E: reserved
+- Phase 3D: recommended for graduation
+- Phase 3E: preparing
 
 ## Current Corpus Baseline
 
@@ -89,15 +88,22 @@ Current gap summary (explicit sidecar metadata):
 
 Note: agent and provider fields are now populated inline on all events (100% / 99.8% coverage), distinct from sidecar metadata tracked here.
 
-## Next Action
+## Closure Decision
 
-Continue Tier 2 acquisition:
+Phase 3D is recommended for graduation. [Closure report](closure_report_v0.2.5.md) provides the full assessment.
 
-- native failure
-- native near-failure
-- explicit correction-trigger sessions
-- native human_intervention=true is now met for the current native lane; keep it as a maintained baseline
-- non-native AskUserQuestion sessions have been marked as human_intervention=true, but they do not alter the native strict gate
-- proxy failure candidates may be reviewed separately, but they do not change the native strict readiness gate
-- follow the acquisition sprint note for the next batch of native samples
-- treat `direct_prompt_native`, `routed_prompt_intervention`, `superpowers_workflow_intervention`, and `controlled_prompt_morphology` as separate lanes in analysis
+Summary:
+- Hypothesis registry: 19 hypotheses across 8 categories — complete
+- Tier 1 validation: 5/5 checked (3 supported, 1 inconclusive, 1 not supported) — complete
+- Tier 2 readiness: assessed, honestly deferred (failure samples genuinely rare) — complete
+- Corpus infrastructure: agent/provider 100% inline coverage — complete
+- Operating rules: fully compliant
+
+## Handoff to Phase 3E
+
+- Tier 2 hypotheses (H-FM-*, H-IM-*, H-EV-004, H-EV-005): maintain in registry, validate when corpus naturally accumulates failure/intervention samples
+- Tier 3 hypotheses (H-OT-*, H-EG-*, H-EV-002, H-EV-003): activate when controlled benchmark protocol is operational
+- Tier 4 hypotheses (H-EV-001, H-LH-*): maintain in registry for future expansion
+- Native lane: maintain as living baseline
+- Intervention lanes: keep separate from native direct-prompt baseline
+- Do not move into Phase 4
