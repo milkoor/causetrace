@@ -65,6 +65,7 @@ Every candidate must include:
 - [Evidence Grading Matrix](evidence_grading_matrix_v0.2.5.md) — Systematic evidence-grade review of all 12 candidates with blockers, promotion conditions, and falsification conditions
 - [Theory Candidate Inventory](theory_candidate_inventory_v0.2.5.md) — All current theory candidates with evidence grades, supporting data, and caveats
 - [Safety-Control Runtime Morphology](safety_control_morphology_candidates_v0.2.5.md) — Phase 4 theory candidate direction studying runtime control morphology at safety boundaries (exploratory, not validated)
+- [Phase 4-3 Trigger Conditions](phase4_3_trigger_conditions.md) — Trigger-based evidence refresh gates; Phase 4-3 will not open on calendar schedule
 
 ## Operating Rules
 
@@ -82,12 +83,10 @@ Every candidate must include:
 
 ## Current State
 
-Phase 4-1 (evidence grading pass): **complete**. Phase 4-2 (theory draft skeleton): **active**.
+Phase 4-1 (evidence grading): complete. Phase 4-2 (theory draft skeleton): complete. Phase 4-3 (evidence refresh): **waiting for corpus growth triggers**.
 
-Four documents published:
-- **Runtime Morphology Theory Draft v0.1**: consolidated draft with supported/caveated/exploratory/deferred claims, boundaries, blockers, and upgrade path
-- **Evidence grading matrix**: systematic review of all 12 candidates
-- **Theory candidate inventory**: 12 candidates across 5 domains
-- **Safety-control runtime morphology**: 5 exploratory candidates
+Five documents published covering candidate definition, evidence grading, consolidated theory draft, safety-control direction, and trigger conditions.
 
-Grade distribution: 2 `supported`, 1 `supported_with_caveat`, 6 `exploratory`, 3 `deferred`. Evidence ceiling: `supported`. No candidate exceeds its grade. Phase 4 is in theory drafting, not final theory publication.
+Grade distribution: 2 `supported`, 1 `supported_with_caveat`, 6 `exploratory`, 3 `deferred`. No trigger is currently met. Phase 4-3 will open when one or more trigger conditions are satisfied by corpus growth — not by calendar schedule.
+
+Phase 5 is not open.
