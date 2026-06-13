@@ -240,6 +240,7 @@ def cli(argv: list[str] | None = None) -> None:
     p_an.add_argument("--notes", help="Free-text observation notes")
     p_an.add_argument("--list", action="store_true", dest="_list", help="List all annotated sessions")
     p_an.add_argument("--unannotated", action="store_true", help="List sessions without annotations")
+    p_an.add_argument("--tag", help="Filter sessions by causetrace_tags value")
 
     p_md = sub.add_parser("metadata", help="Show standardized session metadata")
     p_md.add_argument("session_id", help="Session ID")
@@ -277,6 +278,7 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_benchmark_sub = p_cr_benchmark.add_subparsers(dest="benchmark_command")
     p_cr_benchmark_verify = p_cr_benchmark_sub.add_parser("verify", help="Verify a benchmark manifest")
     p_cr_benchmark_verify.add_argument("benchmark_dir", help="Benchmark directory to verify")
+    p_cr_lane_count = p_cr_sub.add_parser("lane-count", help="Print per-lane session and event counts")
     p_cr_benchmark_compare = p_cr_benchmark_sub.add_parser("compare", help="Compare two benchmark manifests")
     p_cr_benchmark_compare.add_argument("benchmark_a", help="First benchmark directory")
     p_cr_benchmark_compare.add_argument("benchmark_b", help="Second benchmark directory")
@@ -961,6 +963,26 @@ def _handle_annotate(store, args) -> None:
             print(f"  {sid}  ({len(evs)} events)")
         return
 
+    if args.tag:
+        annotated = list_annotated()
+        matches = []
+        for a in annotated:
+            tags = a.get("causetrace_tags", [])
+            if isinstance(tags, str):
+                tags = [tags]
+            if args.tag in tags:
+                matches.append(a)
+        if not matches:
+            print(f"No sessions with causetrace_tags containing '{args.tag}'.")
+            return
+        print(f"Sessions with tag '{args.tag}' ({len(matches)}):")
+        for m in matches:
+            sid = m.get("session_id", "?")[:40]
+            src = m.get("source", "?")
+            il = m.get("intervention_lane", "")
+            print(f"  {sid:40s}  source={src:35s}  lane={il}")
+        return
+
     if not args.session_id:
         print("Usage: causetrace annotate <session_id> [--task-type ...] [--list]")
         sys.exit(1)
@@ -1036,6 +1058,49 @@ def _handle_metadata_set(args) -> None:
     print(f"Metadata saved for {args.session_id}:")
     for key, value in meta.to_dict().items():
         print(f"  {key}: {value}")
+
+
+def _print_lane_counts() -> None:
+    """Print per-lane session and event counts for Phase 3E."""
+    import json
+    from collections import Counter
+
+    meta_dir = Path.home() / ".causetrace" / "metadata"
+    data_dir = Path.home() / ".causetrace" / "data"
+    lanes = Counter()
+    lane_events = Counter()
+
+    for f in meta_dir.iterdir():
+        if not f.name.endswith(".json") or f.name.endswith(".provenance.json"):
+            continue
+        sid = f.stem
+        with open(f) as mf:
+            meta = json.load(mf)
+        ts = meta.get("task_source", "")
+        do = meta.get("data_origin", "")
+
+        lane = "unlabeled"
+        if ts in ("routed_prompt_intervention", "superpowers_workflow_intervention",
+                   "controlled_prompt_morphology"):
+            lane = ts
+        elif do in ("native", "real_work", "direct_prompt_native") and ts == "real_work":
+            lane = "direct_prompt_native"
+
+        jf = data_dir / f"{sid}.jsonl"
+        ev = 0
+        if jf.exists():
+            with open(jf) as ef:
+                for _ in ef:
+                    ev += 1
+        lanes[lane] += 1
+        lane_events[lane] += ev
+
+    print(f"{'Lane':45s} {'Sessions':>8s} {'Events':>10s}")
+    print("-" * 65)
+    for lane in ["direct_prompt_native", "superpowers_workflow_intervention",
+                  "controlled_prompt_morphology", "routed_prompt_intervention", "unlabeled"]:
+        if lanes[lane] or lane != "unlabeled":
+            print(f"{lane:45s} {lanes[lane]:8d} {lane_events[lane]:10d}")
 
 
 def _handle_corpus(store, args) -> None:
@@ -1168,6 +1233,10 @@ def _handle_corpus(store, args) -> None:
         print(f"  Groups: {result['manifest']['group_count']}")
         print(f"  Tags: {len(result['manifest']['tag_counts'])}")
         print(f"  Hash: {result['manifest']['taxonomy_hash']}")
+        return
+
+    if args.corpus_command == "lane-count":
+        _print_lane_counts()
         return
 
     records = list_corpus_records(store)
