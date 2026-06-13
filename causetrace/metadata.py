@@ -54,6 +54,9 @@ _FIELDS = {
     "duration",
     "human_intervention",
     "intervention_lane",
+    "causetrace_tags",
+    "intervention_evidence_source",
+    "intervention_evidence_level",
 }
 
 
@@ -72,6 +75,9 @@ class SessionMetadata:
     duration: float | None = None
     human_intervention: bool | None = None
     intervention_lane: str | None = None
+    causetrace_tags: list[str] | None = None
+    intervention_evidence_source: str | None = None
+    intervention_evidence_level: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionMetadata":
@@ -344,6 +350,7 @@ def detect_causetrace_tags(session_id: str) -> dict[str, Any]:
                 if value is None:
                     continue
                 text = json.dumps(value) if not isinstance(value, str) else value
+                text = text.replace("\\n", "\n")  # unescape JSON-embedded newlines
                 if "causetrace_tags" not in text:
                     continue
                 extracted = _extract_tags_from_text(text)

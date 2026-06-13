@@ -488,6 +488,7 @@ def cli(argv: list[str] | None = None) -> None:
             for ev in events:
                 store.append(args.session_id, ev)
             print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+            _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-opencode-sessions":
         sessions = list_opencode_sessions()
@@ -523,6 +524,7 @@ def cli(argv: list[str] | None = None) -> None:
             for ev in events:
                 store.append(args.session_id, ev)
             print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+            _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-codex-sessions":
         sessions = list_codex_sessions()
@@ -559,6 +561,7 @@ def cli(argv: list[str] | None = None) -> None:
             for ev in events:
                 store.append(args.session_id, ev)
             print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+            _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "stats":
         sid, events = _load(args.session_id)
@@ -1077,6 +1080,46 @@ def _handle_metadata_set(args) -> None:
     print(f"Metadata saved for {args.session_id}:")
     for key, value in meta.to_dict().items():
         print(f"  {key}: {value}")
+
+
+def _auto_detect_intervention_tags(session_id: str) -> bool:
+    """Scan newly enriched session JSONL for causetrace_tags and auto-set metadata.
+
+    Called after enrichment --save. If causetrace_tags are found in event
+    content, sets task_source and intervention_lane in the metadata sidecar
+    without overwriting existing manual annotations.
+
+    Returns True if tags were found and metadata was updated.
+    """
+    result = detect_causetrace_tags(session_id)
+    if not result.get("found"):
+        return False
+
+    tags = result.get("tags") or []
+    lane = result.get("intervention_lane")
+    level = result.get("evidence_level")
+
+    updates: dict[str, Any] = {}
+    if "superpowers-workflow" in tags or "workflow-intervention" in tags:
+        updates["task_source"] = "superpowers_workflow_intervention"
+        updates["intervention_lane"] = "superpowers_workflow_intervention"
+    elif "prompt-routing" in tags or "routed-prompt" in tags:
+        updates["task_source"] = "routed_prompt_intervention"
+        updates["intervention_lane"] = "routed_prompt_intervention"
+    elif "controlled-prompt-morphology" in tags or "prompt-pilot" in tags:
+        updates["task_source"] = "controlled_prompt_morphology"
+        updates["intervention_lane"] = "controlled_prompt_morphology"
+
+    if updates:
+        updates["causetrace_tags"] = tags
+        if level:
+            updates["intervention_evidence_level"] = level
+        updates["intervention_evidence_source"] = "auto-detected"
+        merge_metadata(session_id, updates)
+        print(f"  ✓ Auto-detected {updates['intervention_lane']} lane (tags: {', '.join(tags)})")
+        return True
+
+    return False
 
 
 def _print_lane_counts() -> None:

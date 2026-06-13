@@ -115,11 +115,13 @@ Maintain in registry for future corpus expansion.
 
 Do not enable causetrace-side parser detection for an intervention lane until that lane has accumulated the minimum explicitly tagged sessions.
 
-| Lane | Minimum Tagged Sessions | Current Tagged |
-|------|------------------------|----------------|
-| `routed_prompt_intervention` | 5 | 0 |
-| `superpowers_workflow_intervention` | 5 | 0 |
-| `controlled_prompt_morphology` | 5 or explicit pilot set | 0 |
+| Lane | Minimum Tagged Sessions | Current Tagged | Gate |
+|------|------------------------|----------------|------|
+| `routed_prompt_intervention` | 5 | 0 | BLOCKED |
+| `superpowers_workflow_intervention` | 5 | 5 | **OPEN** |
+| `controlled_prompt_morphology` | 5 or explicit pilot set | 0 | BLOCKED |
+
+`superpowers_workflow_intervention` gate opened 2026-06-13. Parser detection logic (Phase 2 of enrichment recognition plan) can now be implemented against 5 tagged sessions across varied task types.
 
 ### Eligible Evidence
 
@@ -168,12 +170,12 @@ Premature parser detection on 1-2 samples risks encoding heuristic patterns that
 | 3E-2 | complete | Annotation pass — 3 sp sessions annotated, routed=0 honest |
 | 3E-3 | complete | Instrumentation — `SOURCES` expanded, capture tag spec defined, upstream tools updated |
 
-Current bottleneck is upstream tag emission, not causetrace-side lane design. Parser detection remains gated (>=5 tagged sessions per intervention lane).
+`superpowers_workflow_intervention` parser detection gate is OPEN. `routed_prompt_intervention` and `controlled_prompt_morphology` remain gated.
 
 | Lane | Sessions | Evidence |
 |------|----------|----------|
 | `direct_prompt_native` | 101 | stable baseline |
-| `superpowers_workflow_intervention` | 3 | manual annotation (Phase 3E-2); awaiting workflow tag natural accumulation |
+| `superpowers_workflow_intervention` | 8 | 3 manual annotation (Phase 3E-2) + 5 tagged (Phase 3E-3 headless runs with causetrace_tags in metadata) |
 | `controlled_prompt_morphology` | 3 | pilot only; awaiting controlled benchmark expansion |
 | `routed_prompt_intervention` | 0 | awaiting prompt-routing-skill tag emission |
 
@@ -181,12 +183,13 @@ Current bottleneck is upstream tag emission, not causetrace-side lane design. Pa
 
 - Analyze `direct_prompt_native` lane (within-lane only)
 - Descriptive observation of `superpowers_workflow_intervention` (exploratory, not validation-grade)
+- Implement Phase 2 parser detection for `superpowers_workflow_intervention` (gate OPEN)
 - Run real tasks to naturally accumulate tagged sessions
 - Upstream tag emission improvements in `prompt-routing-skill` and superpowers
 
 ### What must NOT be done now
 
-- Heuristic parser detection in causetrace
+- Heuristic parser detection for `routed_prompt_intervention` or `controlled_prompt_morphology` (gate BLOCKED)
 - Skill-only automatic lane classification
 - routed vs direct comparison or conclusions
 - superpowers vs direct comparison or conclusions

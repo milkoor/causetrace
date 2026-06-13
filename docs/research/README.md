@@ -16,9 +16,9 @@ This directory groups the research tracks and branch studies that sit alongside 
 
 ## Current Corpus Snapshot
 
-- data sessions: `1423`
-- metadata sessions: `986`
-- events: `130,583`
+- data sessions: `1517`
+- metadata sessions: `992`
+- events: `131,952`
 - strict research-grade sessions: `157`
 - native strict sessions: `100`
 - agent field coverage: `100%` (inline)
