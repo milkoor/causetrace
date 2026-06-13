@@ -119,9 +119,20 @@ Maintain in registry for future corpus expansion.
 
 ## Phase 3E Documents
 
-- [Lane Baseline](lane_baseline_v0.2.5.md) — Per-lane session counts, event counts, distributions
-- [Intervention Validation Plan](intervention_validation_plan_v0.2.5.md) — Validation protocol, hypothesis allocation, readiness assessment
+- [Lane Baseline](lane_baseline_v0.2.5.md) — Per-lane session counts, event counts, distributions (Phase 3E-1)
+- [Intervention Validation Plan](intervention_validation_plan_v0.2.5.md) — Validation protocol, hypothesis allocation, readiness assessment (Phase 3E-1)
+- [Intervention Lane Annotation Plan](intervention_lane_annotation_plan_v0.2.5.md) — Annotation criteria, non-inference rule, process (Phase 3E-2)
+- [Intervention Lane Candidates](intervention_lane_candidates_v0.2.5.md) — Candidate review table with evidence and decisions (Phase 3E-2)
 
 ## Current State
 
-Phase 3E-1 (lane baseline) is in progress. `direct_prompt_native` has sufficient data (101 sessions). `controlled_prompt_morphology` has 3 pilot sessions. `routed_prompt_intervention` and `superpowers_workflow_intervention` are defined but carry no labeled data yet. Labeling pipelines are the next priority.
+Phase 3E-2 (intervention lane annotation pass) is in progress.
+
+| Lane | Sessions | Status |
+|------|----------|--------|
+| `direct_prompt_native` | 101 | baseline-ready |
+| `superpowers_workflow_intervention` | 3 | annotated (was 0) |
+| `controlled_prompt_morphology` | 3 | preserved |
+| `routed_prompt_intervention` | 0 | no candidates found |
+
+3 sessions annotated as `superpowers_workflow_intervention` (Skill + PlanMode evidence). 18 total Skill-tool sessions reviewed; 15 weak-evidence sessions deferred. 0 genuine `routed_prompt_intervention` candidates found — the `prompt-routing-skill` is deployed but its usage has not yet entered the causetrace corpus.
