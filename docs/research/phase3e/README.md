@@ -111,6 +111,39 @@ Maintain in registry for future corpus expansion.
 - Cross-lane comparison may report trends only.
 - Intervention-lane findings do not become universal policy without additional validation.
 
+## Parser Detection Activation Gate
+
+Do not enable causetrace-side parser detection for an intervention lane until that lane has accumulated the minimum explicitly tagged sessions.
+
+| Lane | Minimum Tagged Sessions | Current Tagged |
+|------|------------------------|----------------|
+| `routed_prompt_intervention` | 5 | 0 |
+| `superpowers_workflow_intervention` | 5 | 0 |
+| `controlled_prompt_morphology` | 5 or explicit pilot set | 0 |
+
+### Eligible Evidence
+
+Must be explicit and machine-readable:
+
+- `causetrace_tags` in tool output or event content
+- `intervention_lane` field with explicit lane value
+- `intervention_evidence_source` specifying the source tool
+- `prompt_posture` (for routed) or `workflow_label` (for superpowers)
+
+### Ineligible Evidence
+
+Must NOT be used for intervention lane classification:
+
+- `Skill` tool usage alone (without PlanMode/Workflow)
+- Prompt length or structured wording
+- Checklist-like execution style
+- Inferred workflow structure without explicit marker
+- Agent self-description of workflow adherence
+
+### Gate Rationale
+
+Premature parser detection on 1-2 samples risks encoding heuristic patterns that mislabel future sessions. Waiting for >=5 tagged sessions per lane ensures detection logic is tested against varied task types, runtimes, and intervention patterns before activation.
+
 ## Background Processes
 
 - Intervention-aware acquisition continues (formerly Phase 3D-T2B).
@@ -127,15 +160,36 @@ Maintain in registry for future corpus expansion.
 
 ## Current State
 
-Phase 3E-3 (intervention capture instrumentation) is in progress.
+**Phase 3E intervention foundation is frozen.**
 
-`SOURCES` expanded in `causetrace/annotation.py` to accept `routed_prompt_intervention`, `superpowers_workflow_intervention`, `controlled_prompt_morphology`. These values are now valid for `causetrace metadata-set --task-source` and `causetrace annotate --source`.
+| Sub-phase | Status | Deliverable |
+|-----------|--------|-------------|
+| 3E-1 | complete | Lane baseline — 4 lanes characterized |
+| 3E-2 | complete | Annotation pass — 3 sp sessions annotated, routed=0 honest |
+| 3E-3 | complete | Instrumentation — `SOURCES` expanded, capture tag spec defined, upstream tools updated |
 
-Capture tag format specifications are documented for `prompt-routing-skill` and superpowers workflows. Tag emission is deferred to those tools. Causetrace-side tag detection (Phase 2 of instrumentation) activates when >=5 sessions carry the tags.
+Current bottleneck is upstream tag emission, not causetrace-side lane design. Parser detection remains gated (>=5 tagged sessions per intervention lane).
 
-| Lane | Sessions | Capture Status |
-|------|----------|---------------|
-| `direct_prompt_native` | 101 | baseline |
-| `superpowers_workflow_intervention` | 3 | manual annotation only |
-| `controlled_prompt_morphology` | 3 | manual annotation only |
-| `routed_prompt_intervention` | 0 | no capture path (requires prompt-routing-skill tag emission) |
+| Lane | Sessions | Evidence |
+|------|----------|----------|
+| `direct_prompt_native` | 101 | stable baseline |
+| `superpowers_workflow_intervention` | 3 | manual annotation (Phase 3E-2); awaiting workflow tag natural accumulation |
+| `controlled_prompt_morphology` | 3 | pilot only; awaiting controlled benchmark expansion |
+| `routed_prompt_intervention` | 0 | awaiting prompt-routing-skill tag emission |
+
+### What can be done now
+
+- Analyze `direct_prompt_native` lane (within-lane only)
+- Descriptive observation of `superpowers_workflow_intervention` (exploratory, not validation-grade)
+- Run real tasks to naturally accumulate tagged sessions
+- Upstream tag emission improvements in `prompt-routing-skill` and superpowers
+
+### What must NOT be done now
+
+- Heuristic parser detection in causetrace
+- Skill-only automatic lane classification
+- routed vs direct comparison or conclusions
+- superpowers vs direct comparison or conclusions
+- Phase 4 entry
+- Universal prompt policy
+- Prediction / anomaly / auto-diagnosis
