@@ -2,33 +2,43 @@
 
 This directory groups the research tracks and branch studies that sit alongside the main `causetrace` runtime-morphology work.
 
-## Active Research Tracks
+## Research Phase Status
 
-- [Phase 3A](phase3a/README.md)
-- [Phase 3B](phase3b/README.md)
-- [Phase 3C](phase3c/README.md)
-- [Phase 3D](phase3d/README.md)
+| Phase | Status | Summary |
+|-------|--------|---------|
+| Phase 2.5 | complete | Baseline infrastructure |
+| Phase 3A | complete | Descriptive corpus |
+| Phase 3B | complete | Topology taxonomy |
+| Phase 3C | complete | Metadata & provenance |
+| [Phase 3D](phase3d/README.md) | **complete** | Hypothesis registry + Tier 1 validation |
+| [Phase 3E](phase3e/README.md) | **active** | Controlled transition & intervention-aware validation |
+| Phase 4 | **not open** | Theory finalization |
 
-## Current Research Status
+## Current Corpus Snapshot
 
-`causetrace` now has enough corpus scale to support validation-oriented work, but not enough metadata density to support theory finalization or default automation policy.
-
-Current snapshot:
-
-- sessions: `1315`
-- events: `64429`
+- sessions: `1351`
+- events: `128,552`
 - strict research-grade sessions: `157`
-- dominant_chain: `1111`
-- mixed: `195`
-- retry-heavy: `541`
-- branchy sessions: `179`
-- long sessions >=100 events: `53`
+- native strict sessions: `100`
+- agent field coverage: `100%` (inline)
+- provider field coverage: `99.8%` (inline)
+- runtime breadth: `7`
+- task breadth: `9`
 
-The next mainline stage is:
+## Phase 3D Closure Summary
 
-`Phase 3D-T2B: Intervention-aware Acquisition`
+Phase 3D delivered the hypothesis registry (19 hypotheses, 8 categories), completed Tier 1 validation (3 supported, 1 inconclusive, 1 not supported), and honestly deferred Tier 2 (failure samples genuinely rare in real agent behavior: 1/100 native failure, 0/100 near-failure). See [closure report](phase3d/closure_report_v0.2.5.md).
 
-This stage continues Tier 2 acquisition while keeping workflow-intervention lanes separate from the native direct-prompt baseline.
+## Phase 3E Active Scope
+
+Controlled transition and intervention-aware validation. Lanes kept separate:
+
+- `direct_prompt_native`
+- `routed_prompt_intervention`
+- `superpowers_workflow_intervention`
+- `controlled_prompt_morphology`
+
+Deferred hypotheses from Phase 3D Tier 2/3/4 carried forward. Tier 2 validation is opportunistic (background acquisition), not a phase gate. See [Phase 3E README](phase3e/README.md).
 
 ## Cross-project Branch Studies
 

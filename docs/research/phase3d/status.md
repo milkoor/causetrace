@@ -1,6 +1,6 @@
-# Phase 3D Status (v0.2.5)
+# Phase 3D Status (v0.2.5) — CLOSED
 
-Phase 3D is recommended for graduation. See [closure report](closure_report_v0.2.5.md) for full assessment.
+Phase 3D is complete. See [closure report](closure_report_v0.2.5.md) for full assessment.
 
 It delivered the hypothesis registry layer for runtime morphology research. Tier 1 validation is complete. Tier 2 is deferred honestly (failure samples genuinely rare in real agent behavior, not an execution failure).
 
@@ -10,8 +10,9 @@ It delivered the hypothesis registry layer for runtime morphology research. Tier
 - Phase 3A: complete
 - Phase 3B: complete
 - Phase 3C: complete
-- Phase 3D: recommended for graduation
-- Phase 3E: preparing
+- Phase 3D: complete
+- Phase 3E: active
+- Phase 4: not open
 
 ## Current Corpus Baseline
 
