@@ -6,7 +6,7 @@ Phase 3E validates selected runtime morphology hypotheses under controlled or in
 
 - Phase 3D: complete
 - Phase 3E: **complete**
-- Phase 4: open
+- Phase 4: frozen (4-1/4-2 complete, 4-3 trigger-gated)
 
 ## Mission
 

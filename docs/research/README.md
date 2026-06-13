@@ -12,7 +12,7 @@ This directory groups the research tracks and branch studies that sit alongside 
 | Phase 3C | complete | Metadata & provenance |
 | [Phase 3D](phase3d/README.md) | **complete** | Hypothesis registry + Tier 1 validation |
 | [Phase 3E](phase3e/README.md) | **complete** | Controlled transition & intervention-aware validation |
-| [Phase 4](phase4/README.md) | **active** | Runtime morphology theory drafting (evidence-graded, not finalized) |
+| [Phase 4](phase4/README.md) | **frozen** | Evidence-graded theory drafting complete (4-1, 4-2). 4-3 trigger-gated, 0/8 triggers met. |
 | Phase 5 | **not open** | Evaluation, diagnostics, prediction |
 
 ## Current Corpus Snapshot
@@ -35,12 +35,15 @@ Phase 3D delivered the hypothesis registry (19 hypotheses, 8 categories), comple
 
 Phase 3E delivered the intervention lane infrastructure (4 lanes, parser detection gate, auto-detection in enrichment), completed 3 sub-phases (baseline, annotation, instrumentation), opened the superpowers_workflow_intervention gate (5 tagged sessions), and honestly deferred Tier 2 validation (failure samples genuinely rare: 1/101 native failure, 5/101 near-failure). Phase 2 auto-detection is operational for superpowers lane. See [closure report](phase3e/closure_report_v0.2.5.md).
 
-## Phase 4 Boundary
+## Phase 4 Freeze Status
 
-Phase 4 is open for **evidence-graded theory drafting and consolidation only**. Current directions:
+Phase 4 is **frozen** after evidence-graded theory drafting. Sub-phases 4-1 (evidence grading) and 4-2 (theory draft skeleton) are complete. Phase 4-3 (evidence refresh) is trigger-gated and will only reopen when corpus growth, intervention tags, failure/near-failure density, or metadata coverage crosses predefined thresholds. Currently 0/8 triggers met.
 
-- [Theory Candidate Inventory](phase4/theory_candidate_inventory_v0.2.5.md) — 7 candidates across 4 domains
-- [Safety-Control Runtime Morphology](phase4/safety_control_morphology_candidates_v0.2.5.md) — 5 exploratory candidates studying runtime behavior at safety boundaries
+Phase 4 documents:
+- [Runtime Morphology Theory Draft v0.1](phase4/runtime_morphology_theory_draft_v0.1.md) — Consolidated draft: 2 supported, 1 caveated, 6 exploratory, 3 deferred
+- [Evidence Grading Matrix](phase4/evidence_grading_matrix_v0.2.5.md) — Full candidate review with blockers and promotion conditions
+- [Safety-Control Runtime Morphology](phase4/safety_control_morphology_candidates_v0.2.5.md) — 5 exploratory T-SC candidates
+- [Phase 4-3 Trigger Conditions](phase4/phase4_3_trigger_conditions.md) — 8 corpus-growth triggers, 7 non-triggers
 
 Phase 4 must not enter:
 

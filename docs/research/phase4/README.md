@@ -6,7 +6,7 @@ Phase 4 consolidates evidence-graded theory candidates from Phase 3D (hypothesis
 
 - Phase 3D: complete
 - Phase 3E: complete
-- Phase 4: **active** (theory drafting only)
+- Phase 4: **frozen** (4-1 and 4-2 complete; 4-3 trigger-gated, 0/8 triggers met)
 - Phase 5: not open (evaluation, diagnostics, prediction)
 
 ## Mission
@@ -83,7 +83,7 @@ Every candidate must include:
 
 ## Current State
 
-Phase 4-1 (evidence grading): complete. Phase 4-2 (theory draft skeleton): complete. Phase 4-3 (evidence refresh): **waiting for corpus growth triggers**.
+Phase 4 is **frozen**. Phase 4-1 (evidence grading): complete. Phase 4-2 (theory draft skeleton): complete. Phase 4-3 (evidence refresh): trigger-gated, 0/8 triggers met.
 
 Five documents published covering candidate definition, evidence grading, consolidated theory draft, safety-control direction, and trigger conditions.
 
