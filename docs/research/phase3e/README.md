@@ -117,6 +117,11 @@ Maintain in registry for future corpus expansion.
 - Native lane maintained as a living baseline.
 - Tier 2 failure/intervention opportunistic validation.
 
+## Phase 3E Documents
+
+- [Lane Baseline](lane_baseline_v0.2.5.md) — Per-lane session counts, event counts, distributions
+- [Intervention Validation Plan](intervention_validation_plan_v0.2.5.md) — Validation protocol, hypothesis allocation, readiness assessment
+
 ## Current State
 
-Phase 3E is newly opened. The first action is to activate the controlled benchmark protocol and begin lane-separated intervention comparisons. No hypotheses in the carried-forward set are yet validation-ready.
+Phase 3E-1 (lane baseline) is in progress. `direct_prompt_native` has sufficient data (101 sessions). `controlled_prompt_morphology` has 3 pilot sessions. `routed_prompt_intervention` and `superpowers_workflow_intervention` are defined but carry no labeled data yet. Labeling pipelines are the next priority.
