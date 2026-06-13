@@ -132,10 +132,14 @@ Tier 2 validation is honestly deferred — the bottleneck is corpus failure dens
 
 ## Next Phase
 
-Phase 4 (Theory Finalization) can be opened. Phase 4 scope is constrained by the Phase 3E operating rules that remain in effect:
+Phase 4 is open for **evidence-graded theory drafting and consolidation only**. It is explicitly NOT open for:
 
-- All claims must bind to a specific corpus snapshot and lane
-- Every percentage must include its denominator
-- Negative results are first-class entries
-- Do not promote hypotheses without corpus-backed validation
-- Intervention lane findings do not become universal policy without additional validation
+- Prediction, anomaly detection, or automatic diagnosis
+- Universal prompt policy defaulting
+- Promotion of exploratory findings to stable theory without additional evidence
+- Cross-lane aggregation without lane disclosure
+- Phase 5 (evaluation / diagnostics)
+
+Phase 4-1 deliverable: theory candidate inventory with evidence grading (`supported`, `supported_with_caveat`, `exploratory`, `inconclusive`, `deferred`). Each candidate must carry corpus snapshot, lane scope, denominator, runtime/task caveats, and falsification condition.
+
+Phase 3E operating rules carry forward into Phase 4 unchanged.
