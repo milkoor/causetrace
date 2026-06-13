@@ -1135,7 +1135,7 @@ def _print_gate_status() -> None:
         "controlled_prompt_morphology",
     ]
 
-    meta_dir = Path.home() / ".causetrace" / "meta"
+    meta_dir = Path.home() / ".causetrace" / "metadata"
     data_dir = Path.home() / ".causetrace" / "data"
 
     # Primary signal: causetrace_tags field in annotation metadata
