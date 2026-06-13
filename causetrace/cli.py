@@ -297,6 +297,11 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
     p_cr_health.add_argument("--output", "-o", help="Write report to file")
     p_cr_phase4 = p_cr_sub.add_parser("phase4-status", help="Show Phase 4-3 trigger status for evidence refresh gating")
+    p_cr_classify = p_cr_sub.add_parser("classify-unlabeled", help="Propose lane classification for unlabeled sessions (dry-run)")
+    p_cr_classify.add_argument("--dry-run", action="store_true", default=True, help="Proposal only, no metadata writes (default)")
+    p_cr_classify.add_argument("--limit", type=int, default=0, help="Limit to N sessions (0 = all)")
+    p_cr_classify.add_argument("--min-confidence", choices=["high", "medium"], default="high",
+                               help="Minimum confidence threshold for proposals (default: high)")
     p_cr_origins = p_cr_sub.add_parser("origins", help="Show corpus source-origin coverage for Phase 3C planning")
     p_cr_origins.add_argument("--output", "-o", help="Write report to file")
     p_cr_readiness = p_cr_sub.add_parser("readiness", help="Show phase-3 research readiness and blockers")
@@ -1359,6 +1364,127 @@ def _print_phase4_trigger_status() -> None:
     print("Next check: opportunistic — run after significant corpus growth.")
 
 
+def _print_classify_unlabeled(limit: int = 0, min_confidence: str = "high") -> None:
+    """Propose lane classification for unlabeled metadata sessions.
+
+    Dry-run only. No metadata writes. Only high-confidence explicit rules.
+    Does not infer intervention lanes. Does not use prompt length or style.
+    """
+    import json
+
+    meta_dir = Path.home() / ".causetrace" / "metadata"
+
+    proposals: list[dict] = []
+    skipped_reasons: dict[str, int] = {}
+    total_unlabeled = 0
+
+    for f in sorted(meta_dir.iterdir()):
+        if not f.name.endswith(".json") or f.name.endswith(".provenance.json"):
+            continue
+        with open(f) as fh:
+            meta = json.load(fh)
+        sid = f.stem
+        ts = meta.get("task_source", "")
+        do = meta.get("data_origin", "")
+        il = meta.get("intervention_lane", "")
+        tags = meta.get("causetrace_tags", [])
+        rt = meta.get("runtime", "")
+
+        # Already classified via explicit lane assignment
+        if ts in ("routed_prompt_intervention", "superpowers_workflow_intervention",
+                   "controlled_prompt_morphology"):
+            continue
+        if il:
+            continue
+
+        total_unlabeled += 1
+
+        if limit and len(proposals) >= limit:
+            continue
+
+        # Rule: external trajectory
+        if do == "external_trajectory":
+            proposals.append({
+                "session_id": sid, "proposed_lane": "external_trajectory",
+                "evidence": f"data_origin={do}", "confidence": "high",
+            })
+            continue
+
+        # Rule: controlled benchmark
+        if do == "controlled_benchmark":
+            proposals.append({
+                "session_id": sid, "proposed_lane": "controlled_prompt_morphology",
+                "evidence": f"data_origin={do}", "confidence": "high",
+            })
+            continue
+
+        # Rule: native direct prompt (high confidence)
+        # Requires: data_origin=native + task_source=real_work + no intervention markers
+        if do == "native" and ts == "real_work":
+            if tags or il:
+                skipped_reasons["has intervention markers despite native+real_work"] = \
+                    skipped_reasons.get("has intervention markers despite native+real_work", 0) + 1
+                continue
+            proposals.append({
+                "session_id": sid, "proposed_lane": "direct_prompt_native",
+                "evidence": f"data_origin={do}, task_source={ts}, no intervention markers",
+                "confidence": "high",
+            })
+            continue
+
+        # Medium confidence: data_origin=native with no task_source
+        if min_confidence == "medium" and do == "native" and not ts:
+            if tags or il:
+                skipped_reasons["native data_origin but has intervention markers"] = \
+                    skipped_reasons.get("native data_origin but has intervention markers", 0) + 1
+                continue
+            proposals.append({
+                "session_id": sid, "proposed_lane": "direct_prompt_native",
+                "evidence": f"data_origin={do}, no task_source, no intervention markers",
+                "confidence": "medium",
+            })
+            continue
+
+        # Count skip reasons
+        reason = f"no matching rule (do={do}, ts={ts or 'unset'}, rt={rt or 'unset'})"
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
+
+    # Print report
+    print(f"classify-unlabeled --dry-run  (confidence >= {min_confidence})")
+    print(f"  Total unlabeled: {total_unlabeled}")
+    print(f"  Proposed: {len(proposals)}")
+    print(f"  Skipped: {total_unlabeled - len(proposals)}")
+    print()
+    print(f"{'Confidence':12s} {'Proposed Lane':40s} {'Count':>6s}")
+    print("-" * 62)
+    from collections import Counter
+    conf_counter: Counter = Counter()
+    lane_counter: Counter = Counter()
+    for p in proposals:
+        conf_counter[p["confidence"]] += 1
+        lane_counter[p["proposed_lane"]] += 1
+    for conf in ["high", "medium"]:
+        for lane in sorted(lane_counter):
+            count = sum(1 for p in proposals if p["confidence"] == conf and p["proposed_lane"] == lane)
+            if count:
+                print(f"{conf:12s} {lane:40s} {count:>6d}")
+    print()
+    if skipped_reasons:
+        print("Top skip reasons:")
+        for reason, count in sorted(skipped_reasons.items(), key=lambda x: -x[1])[:5]:
+            print(f"  [{count:>4d}] {reason[:80]}")
+    print()
+    if proposals:
+        print("Sample proposals:")
+        for p in proposals[:10]:
+            sid_short = p["session_id"][:40]
+            print(f"  {sid_short:40s} → {p['proposed_lane']:35s} [{p['confidence']}]")
+        if len(proposals) > 10:
+            print(f"  ... and {len(proposals) - 10} more")
+    print()
+    print("No metadata written. Use --apply-confirmed (future) to apply high-confidence proposals.")
+
+
 def _print_gate_status() -> None:
     """Print Phase 3E parser detection gate readiness table."""
     import json
@@ -1448,6 +1574,10 @@ def _handle_corpus(store, args) -> None:
 
     if args.corpus_command == "phase4-status":
         _print_phase4_trigger_status()
+        return
+
+    if args.corpus_command == "classify-unlabeled":
+        _print_classify_unlabeled(args.limit, args.min_confidence)
         return
 
     if args.corpus_command == "origins":
