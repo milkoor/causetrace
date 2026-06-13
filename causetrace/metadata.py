@@ -34,6 +34,13 @@ _DATA_ORIGINS = {
     "unknown",
 }
 
+INTERVENTION_LANES = {
+    "direct_prompt_native",
+    "routed_prompt_intervention",
+    "superpowers_workflow_intervention",
+    "controlled_prompt_morphology",
+}
+
 _VALID_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _FIELDS = {
     "data_origin",
@@ -46,6 +53,7 @@ _FIELDS = {
     "success",
     "duration",
     "human_intervention",
+    "intervention_lane",
 }
 
 
@@ -63,6 +71,7 @@ class SessionMetadata:
     success: bool | None = None
     duration: float | None = None
     human_intervention: bool | None = None
+    intervention_lane: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionMetadata":
@@ -128,6 +137,8 @@ def validate_metadata(metadata: SessionMetadata | dict[str, Any]) -> SessionMeta
         raise ValueError(f"Unknown task_type: {meta.task_type}")
     if meta.task_source is not None and meta.task_source not in SOURCES:
         raise ValueError(f"Unknown task_source: {meta.task_source}")
+    if meta.intervention_lane is not None and meta.intervention_lane not in INTERVENTION_LANES:
+        raise ValueError(f"Unknown intervention_lane: {meta.intervention_lane}")
 
     meta.success = _coerce_bool(meta.success, "success")
     meta.human_intervention = _coerce_bool(meta.human_intervention, "human_intervention")
@@ -269,3 +280,82 @@ def merge_metadata(session_id: str, updates: dict[str, Any]) -> SessionMetadata:
     meta = validate_metadata(current)
     save_metadata(session_id, meta)
     return meta
+
+
+_TAGS_DATA_DIR = os.path.expanduser("~/.causetrace/data")
+
+_TAG_BLOCK_RE = re.compile(r"causetrace_tags:\s*\n((?:\s+-\s+\S+\n?)+)", re.IGNORECASE)
+_LANE_RE = re.compile(r"intervention_lane:\s*(\S+)", re.IGNORECASE)
+_LEVEL_RE = re.compile(r"evidence_level:\s*(\S+)", re.IGNORECASE)
+
+
+def _extract_tags_from_text(text: str) -> dict[str, Any]:
+    """Extract causetrace_tags structured metadata from a text blob."""
+    tags: list[str] = []
+    m = _TAG_BLOCK_RE.search(text)
+    if m:
+        for line in m.group(1).strip().split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                tags.append(stripped[2:].strip())
+    lane: str | None = None
+    m = _LANE_RE.search(text)
+    if m:
+        lane = m.group(1)
+    level: str | None = None
+    m = _LEVEL_RE.search(text)
+    if m:
+        level = m.group(1)
+    return {"tags": tags, "intervention_lane": lane, "evidence_level": level}
+
+
+def detect_causetrace_tags(session_id: str) -> dict[str, Any]:
+    """Scan a session's events for causetrace_tags YAML block patterns.
+
+    Searches tool_input and tool_output of each event for causetrace_tags
+    blocks and extracts tags, intervention_lane, and evidence_level.
+
+    Returns:
+        dict with keys: found (bool), tags (list[str]),
+        intervention_lane (str|None), evidence_level (str|None)
+    """
+    result: dict[str, Any] = {
+        "found": False,
+        "tags": [],
+        "intervention_lane": None,
+        "evidence_level": None,
+    }
+    path = Path(_TAGS_DATA_DIR) / f"{session_id}.jsonl"
+    if not path.exists():
+        return result
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            for field_name in ("tool_input", "tool_output"):
+                value = event.get(field_name)
+                if value is None:
+                    continue
+                text = json.dumps(value) if not isinstance(value, str) else value
+                if "causetrace_tags" not in text:
+                    continue
+                extracted = _extract_tags_from_text(text)
+                if not any(extracted.values()):
+                    continue
+                result["found"] = True
+                if extracted.get("tags"):
+                    result["tags"] = extracted["tags"]
+                if extracted.get("intervention_lane"):
+                    result["intervention_lane"] = extracted["intervention_lane"]
+                if extracted.get("evidence_level"):
+                    result["evidence_level"] = extracted["evidence_level"]
+                return result
+
+    return result

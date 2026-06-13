@@ -26,7 +26,7 @@ from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
 from .hooks.copilot_tailer import scan_logs as scan_copilot
-from .metadata import load_metadata, merge_metadata
+from .metadata import INTERVENTION_LANES, detect_causetrace_tags, load_metadata, merge_metadata
 from .onboarding import create_demo_session, install_claude_hook, uninstall_claude_hook
 from .report import generate_report, generate_corpus_health_report, generate_corpus_origin_report, generate_phase3_readiness_report
 
@@ -257,12 +257,18 @@ def cli(argv: list[str] | None = None) -> None:
     p_ms.add_argument("--success", type=_parse_cli_bool, help="true/false")
     p_ms.add_argument("--duration", type=float, help="Session duration in seconds")
     p_ms.add_argument("--human-intervention", type=_parse_cli_bool, help="true/false")
+    p_ms.add_argument("--intervention-lane", choices=list(INTERVENTION_LANES), help="Intervention lane")
 
     p_cr = sub.add_parser("corpus", help="Query, snapshot, and export session corpus")
     p_cr.add_argument("--runtime", help="Filter by runtime (e.g. claude, codex, opencode)")
     p_cr.add_argument("--task", choices=list(TASK_TYPES), help="Filter by task type")
     p_cr.add_argument("--topology", choices=list(TOPOLOGY_PHENOTYPES), help="Filter by topology phenotype")
     p_cr.add_argument("--source", choices=list(SOURCES), help="Filter by session source")
+    p_cr.add_argument(
+        "--lane",
+        choices=list(SOURCES) + ["direct_prompt_native"],
+        help="Filter by intervention lane (direct_prompt_native maps to task_source=real_work)",
+    )
     p_cr_sub = p_cr.add_subparsers(dest="corpus_command")
     p_cr_snapshot = p_cr_sub.add_parser("snapshot", help="Create a reproducible corpus snapshot")
     p_cr_snapshot.add_argument("--name", help="Snapshot name (default: timestamp)")
@@ -279,6 +285,7 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_benchmark_verify = p_cr_benchmark_sub.add_parser("verify", help="Verify a benchmark manifest")
     p_cr_benchmark_verify.add_argument("benchmark_dir", help="Benchmark directory to verify")
     p_cr_lane_count = p_cr_sub.add_parser("lane-count", help="Print per-lane session and event counts")
+    p_cr_gate = p_cr_sub.add_parser("gate-status", help="Show Phase 3E parser detection gate readiness")
     p_cr_benchmark_compare = p_cr_benchmark_sub.add_parser("compare", help="Compare two benchmark manifests")
     p_cr_benchmark_compare.add_argument("benchmark_a", help="First benchmark directory")
     p_cr_benchmark_compare.add_argument("benchmark_b", help="Second benchmark directory")
@@ -314,6 +321,9 @@ def cli(argv: list[str] | None = None) -> None:
     p_sh.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
     p_sh.add_argument("--window", type=int, default=50, help="Window size in events (default: 50)")
     p_sh.add_argument("--z", type=float, default=2.0, help="Z-score threshold (default: 2.0)")
+
+    p_dt = sub.add_parser("detect-tags", help="Detect causetrace_tags patterns in session events")
+    p_dt.add_argument("session_id", help="Session ID to scan")
 
     sub.add_parser("demo", help="Create and display a saved demo causal trace")
 
@@ -673,6 +683,14 @@ def cli(argv: list[str] | None = None) -> None:
             print(f"  Window {s['window']:3d}  events [{s['event_index_start']}-{s['event_index_end']})")
             print(f"         {metrics}")
             print()
+
+    elif args.command == "detect-tags":
+        result = detect_causetrace_tags(args.session_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Found: {result['found']}")
+        print(f"  Tags: {result['tags']}")
+        print(f"  Intervention lane: {result['intervention_lane']}")
+        print(f"  Evidence level: {result['evidence_level']}")
 
     elif args.command == "doctor":
         results = _run_doctor()
@@ -1045,6 +1063,7 @@ def _handle_metadata_set(args) -> None:
         "success": args.success,
         "duration": args.duration,
         "human_intervention": args.human_intervention,
+        "intervention_lane": args.intervention_lane if hasattr(args, "intervention_lane") else None,
     }
     updates = {k: v for k, v in updates.items() if v is not None}
     if not updates:
@@ -1101,6 +1120,65 @@ def _print_lane_counts() -> None:
                   "controlled_prompt_morphology", "routed_prompt_intervention", "unlabeled"]:
         if lanes[lane] or lane != "unlabeled":
             print(f"{lane:45s} {lanes[lane]:8d} {lane_events[lane]:10d}")
+
+
+def _print_gate_status() -> None:
+    """Print Phase 3E parser detection gate readiness table."""
+    import json
+    from collections import Counter
+    from pathlib import Path
+
+    GATE_REQUIRED = 5
+    LANES = [
+        "routed_prompt_intervention",
+        "superpowers_workflow_intervention",
+        "controlled_prompt_morphology",
+    ]
+
+    meta_dir = Path.home() / ".causetrace" / "meta"
+    data_dir = Path.home() / ".causetrace" / "data"
+
+    # Primary signal: causetrace_tags field in annotation metadata
+    tagged_sessions = Counter()
+    event_tag_hits = Counter()
+
+    for f in meta_dir.iterdir():
+        if not f.name.endswith(".json"):
+            continue
+        try:
+            with open(f) as mf:
+                meta = json.load(mf)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        source = meta.get("source") or meta.get("task_source", "")
+        if source not in LANES:
+            continue
+
+        tags = meta.get("causetrace_tags", [])
+        if isinstance(tags, str):
+            tags = [tags]
+        if tags:
+            tagged_sessions[source] += 1
+
+        # Secondary signal: scan event content for 'causetrace_tags' string
+        sid = meta.get("session_id") or f.stem
+        jf = data_dir / f"{sid}.jsonl"
+        if jf.exists():
+            try:
+                content = jf.read_text()
+                if "causetrace_tags" in content:
+                    event_tag_hits[source] += 1
+            except OSError:
+                pass
+
+    print(f"Phase 3E Parser Detection Gate (requires >= {GATE_REQUIRED} tagged sessions per lane)\n")
+    print(f"{'Lane':45s} {'Tagged':>8s} {'Required':>8s} {'Gate':>8s}  {'Event Hits':>10s}")
+    print("-" * 85)
+    for lane in LANES:
+        count = tagged_sessions[lane]
+        met = "OPEN" if count >= GATE_REQUIRED else "BLOCKED"
+        print(f"{lane:45s} {count:8d} {GATE_REQUIRED:8d} {met:>8s}  {event_tag_hits[lane]:10d}")
 
 
 def _handle_corpus(store, args) -> None:
@@ -1239,6 +1317,10 @@ def _handle_corpus(store, args) -> None:
         _print_lane_counts()
         return
 
+    if args.corpus_command == "gate-status":
+        _print_gate_status()
+        return
+
     records = list_corpus_records(store)
     if not records:
         print("No sessions found.")
@@ -1279,6 +1361,9 @@ def _handle_corpus(store, args) -> None:
         rows = [r for r in rows if r["topology"] == args.topology]
     if args.source:
         rows = [r for r in rows if r["source"] == args.source]
+    if args.lane:
+        lane_source = "real_work" if args.lane == "direct_prompt_native" else args.lane
+        rows = [r for r in rows if r["source"] == lane_source]
 
     if not rows:
         print("No matching sessions.")

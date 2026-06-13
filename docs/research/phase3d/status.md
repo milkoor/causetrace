@@ -16,9 +16,9 @@ It delivered the hypothesis registry layer for runtime morphology research. Tier
 
 ## Current Corpus Baseline
 
-- sessions: `1351`
-- events: `128534`
-- metadata sessions: `981`
+- sessions: `1423`
+- events: `130583`
+- metadata sessions: `986`
 - annotated sessions: `53`
 - explicit runtime sessions: `179`
 - ready: `True`
@@ -108,3 +108,7 @@ Summary:
 - Native lane: maintain as living baseline
 - Intervention lanes: keep separate from native direct-prompt baseline
 - Do not move into Phase 4
+
+## Post-Closure Updates
+
+- Post-closure update: corpus grew to 1423 data sessions / 130,583 events (2026-06-13). Phase 3E intervention foundation frozen.
