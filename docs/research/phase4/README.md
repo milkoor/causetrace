@@ -61,6 +61,7 @@ Every candidate must include:
 
 ## Documents
 
+- [Evidence Grading Matrix](evidence_grading_matrix_v0.2.5.md) — Systematic evidence-grade review of all 12 candidates with blockers, promotion conditions, and falsification conditions
 - [Theory Candidate Inventory](theory_candidate_inventory_v0.2.5.md) — All current theory candidates with evidence grades, supporting data, and caveats
 - [Safety-Control Runtime Morphology](safety_control_morphology_candidates_v0.2.5.md) — Phase 4 theory candidate direction studying runtime control morphology at safety boundaries (exploratory, not validated)
 
@@ -80,9 +81,10 @@ Every candidate must include:
 
 ## Current State
 
-Phase 4-1 is active. Two documents published:
+Phase 4-1 (evidence grading pass) is active. Three documents published:
 
-- **Theory candidate inventory**: 7 candidates across 4 domains (default morphology, workflow intervention, failure, prompt/routed/controlled)
-- **Safety-control runtime morphology**: 5 exploratory candidates (T-SC-001 through T-SC-005) defining a fifth domain studying runtime behavior at safety boundaries
+- **Evidence grading matrix**: systematic review of all 12 candidates with blockers, promotion conditions, and falsification conditions
+- **Theory candidate inventory**: 12 candidates across 5 domains
+- **Safety-control runtime morphology**: 5 exploratory candidates defining the safety-control domain
 
-All candidates are evidence-graded. No candidate has been promoted beyond its grade. No new hypotheses are being registered — Phase 4 consolidates and extends, it does not finalize.
+Grade distribution: 2 `supported`, 1 `supported_with_caveat`, 6 `exploratory`, 3 `deferred`. Evidence ceiling: `supported`. No candidate exceeds its grade. No candidate carries policy recommendations. Phase 4 is in theory drafting and evidence grading, not final theory publication.
