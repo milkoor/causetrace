@@ -62,6 +62,7 @@ Every candidate must include:
 ## Documents
 
 - [Theory Candidate Inventory](theory_candidate_inventory_v0.2.5.md) — All current theory candidates with evidence grades, supporting data, and caveats
+- [Safety-Control Runtime Morphology](safety_control_morphology_candidates_v0.2.5.md) — Phase 4 theory candidate direction studying runtime control morphology at safety boundaries (exploratory, not validated)
 
 ## Operating Rules
 
@@ -79,4 +80,9 @@ Every candidate must include:
 
 ## Current State
 
-Phase 4-1 is active. First deliverable: theory candidate inventory with evidence grading. Seven candidates identified from Phase 3D + Phase 3E evidence. No new hypotheses are being registered — Phase 4 consolidates, it does not expand.
+Phase 4-1 is active. Two documents published:
+
+- **Theory candidate inventory**: 7 candidates across 4 domains (default morphology, workflow intervention, failure, prompt/routed/controlled)
+- **Safety-control runtime morphology**: 5 exploratory candidates (T-SC-001 through T-SC-005) defining a fifth domain studying runtime behavior at safety boundaries
+
+All candidates are evidence-graded. No candidate has been promoted beyond its grade. No new hypotheses are being registered — Phase 4 consolidates and extends, it does not finalize.

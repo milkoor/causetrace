@@ -37,13 +37,19 @@ Phase 3E delivered the intervention lane infrastructure (4 lanes, parser detecti
 
 ## Phase 4 Boundary
 
-Phase 4 is open for **evidence-graded theory drafting and consolidation only**. It must not enter:
+Phase 4 is open for **evidence-graded theory drafting and consolidation only**. Current directions:
+
+- [Theory Candidate Inventory](phase4/theory_candidate_inventory_v0.2.5.md) — 7 candidates across 4 domains
+- [Safety-Control Runtime Morphology](phase4/safety_control_morphology_candidates_v0.2.5.md) — 5 exploratory candidates studying runtime behavior at safety boundaries
+
+Phase 4 must not enter:
 
 - Prediction, anomaly detection, or automatic diagnosis
 - Universal prompt policy defaulting
 - Cross-lane aggregation without lane disclosure
 - Promotion of exploratory findings to stable theory without additional evidence
 - Phase 5 (evaluation / diagnostics)
+- Jailbreak reproduction or attack research
 
 ## Cross-project Branch Studies
 

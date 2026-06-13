@@ -159,7 +159,16 @@ Routed Prompt (T-RP)
 
 Prompt Morphology (T-PM)
 └── T-PM-001: controlled prompt pilot-only      [deferred]
+
+Safety-Control Morphology (T-SC)
+├── T-SC-001: safety boundaries may alter topology   [exploratory]
+├── T-SC-002: task pressure may produce collapse      [exploratory]
+├── T-SC-003: workflow intervention may reduce collapse [exploratory]
+├── T-SC-004: human intervention as safety signal     [exploratory]
+└── T-SC-005: near-failure more informative than final labels [exploratory]
 ```
+
+See [Safety-Control Runtime Morphology](safety_control_morphology_candidates_v0.2.5.md) for full candidate definitions, observable signals, corpus requirements, and non-goals.
 
 ## Operating Rules
 
