@@ -12,7 +12,7 @@ from causetrace.analysis import (
 from causetrace.annotation import save_annotation
 from causetrace.core import JSONStore, ToolEvent
 from causetrace.corpus import Phase3ReadinessRequirements, assess_phase3_readiness, benchmark_corpus, build_corpus_facts, compare_benchmark_manifests, export_dataset, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
-from causetrace.metadata import load_metadata, load_metadata_provenance, merge_metadata
+from causetrace.metadata import load_metadata, load_metadata_provenance, merge_metadata, merge_metadata_provenance
 from causetrace.report import generate_corpus_health_report, generate_corpus_origin_report, generate_phase3_readiness_report
 from causetrace.corpus import summarize_corpus_health
 
@@ -708,3 +708,150 @@ def test_corpus_verify_cli(monkeypatch, tmp_path):
     assert result.returncode == 0
     assert "Snapshot:" in result.stdout
     assert "OK: True" in result.stdout
+
+
+# ── classify-unlabeled tests ──────────────────────────────────────────
+
+
+def test_classify_unlabeled_dry_run_no_write(monkeypatch, tmp_path):
+    """classify-unlabeled --dry-run must not write to metadata sidecars."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    # Write a session that qualifies for high-confidence classification
+    sid = "test-native-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=False)
+
+    # Metadata must NOT be modified
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+
+
+def test_classify_unlabeled_apply_confirmed_writes_high_confidence(monkeypatch, tmp_path):
+    """--apply-confirmed writes intervention_lane for high-confidence proposals."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-native-002"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    # Metadata must now have intervention_lane
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert meta.get("intervention_lane") == "direct_prompt_native"
+
+    # Provenance must be written
+    prov = json.loads((mdir / f"{sid}.provenance.json").read_text())
+    assert prov.get("intervention_lane") == "classified_from_explicit_metadata"
+
+
+def test_classify_unlabeled_unknown_unchanged(monkeypatch, tmp_path):
+    """data_origin=unknown sessions must remain unmodified."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-unknown-001"
+    original = {"session_id": sid, "data_origin": "unknown", "runtime": "codex"}
+    (mdir / f"{sid}.json").write_text(json.dumps(original))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+    assert meta.get("data_origin") == "unknown"
+
+
+def test_classify_unlabeled_preserves_existing_lane(monkeypatch, tmp_path):
+    """Existing intervention_lane must not be overwritten."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-sp-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "superpowers_workflow_intervention",
+        "intervention_lane": "superpowers_workflow_intervention",
+        "runtime": "claude-code",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert meta.get("intervention_lane") == "superpowers_workflow_intervention"
+
+
+def test_classify_unlabeled_medium_not_applied(monkeypatch, tmp_path):
+    """Medium-confidence proposals are never applied even with --apply-confirmed."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-medium-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="medium", apply_confirmed=True)
+
+    # Medium confidence => not applied
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+
+
+def test_classify_unlabeled_high_confidence_not_applied_if_tags(monkeypatch, tmp_path):
+    """Sessions with causetrace_tags are skipped even if native+real_work."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-tagged-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "causetrace_tags": ["superpowers-workflow"],
+        "runtime": "claude-code",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta

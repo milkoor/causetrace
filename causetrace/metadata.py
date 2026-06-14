@@ -24,6 +24,7 @@ _PROVENANCE_VALUES = {
     "annotation",
     "materialized",
     "inferred_from_runtime_adapter",
+    "classified_from_explicit_metadata",
     "unknown",
 }
 
