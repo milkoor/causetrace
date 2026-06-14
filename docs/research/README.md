@@ -57,6 +57,7 @@ Phase 4 must not enter:
 ## Corpus Infrastructure
 
 - [Metadata Capture Hardening v0.2.5](corpus/metadata_capture_hardening_v0.2.5.md) — Upstream capture requirements, source-specific defaults, current baseline (108/992 labeled, 10.9%)
+- [Future Run Metadata Checklist v0.2.5](corpus/future_run_metadata_checklist_v0.2.5.md) — Per-capture-type metadata declaration checklists, post-capture verification, non-rules
 
 ## Cross-project Branch Studies
 
