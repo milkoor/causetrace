@@ -54,6 +54,10 @@ Phase 4 must not enter:
 - Phase 5 (evaluation / diagnostics)
 - Jailbreak reproduction or attack research
 
+## Corpus Infrastructure
+
+- [Metadata Capture Hardening v0.2.5](corpus/metadata_capture_hardening_v0.2.5.md) — Upstream capture requirements, source-specific defaults, current baseline (108/992 labeled, 10.9%)
+
 ## Cross-project Branch Studies
 
 - [Cross-project Prompt Morphology Study](branches/cross_project_prompt_morphology/README.md)
