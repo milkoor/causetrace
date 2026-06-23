@@ -58,6 +58,10 @@ _FIELDS = {
     "causetrace_tags",
     "intervention_evidence_source",
     "intervention_evidence_level",
+    "behavior_distribution_tag",
+    "bde_generated",
+    "experiment_id",
+    "control_group_id",
 }
 
 
@@ -79,6 +83,10 @@ class SessionMetadata:
     causetrace_tags: list[str] | None = None
     intervention_evidence_source: str | None = None
     intervention_evidence_level: str | None = None
+    behavior_distribution_tag: str | None = None
+    bde_generated: bool | None = None
+    experiment_id: str | None = None
+    control_group_id: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionMetadata":
@@ -149,6 +157,7 @@ def validate_metadata(metadata: SessionMetadata | dict[str, Any]) -> SessionMeta
 
     meta.success = _coerce_bool(meta.success, "success")
     meta.human_intervention = _coerce_bool(meta.human_intervention, "human_intervention")
+    meta.bde_generated = _coerce_bool(meta.bde_generated, "bde_generated")
     meta.duration = _coerce_duration(meta.duration)
     return meta
 

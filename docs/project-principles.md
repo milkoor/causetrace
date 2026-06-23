@@ -57,6 +57,20 @@ External research papers may inform hypotheses, terminology, and research questi
 
 Literature-driven ideas should first enter a literature note and the hypothesis registry, not the core implementation or the primary taxonomy.
 
+## Data-Grounded Method Rule
+
+Do not assume a method improves performance, safety, or auditability. Record it, compare it, then decide.
+
+All future method claims must be grounded in recorded runtime traces. A method is not considered effective unless its impact on performance, morphology, and auditability is separately recorded.
+
+Final task success is not enough. A method may improve auditability while increasing overhead, reduce runtime events while weakening evidence, or improve task success while reducing human reviewability.
+
+## Comparability Rule
+
+Raw session volume is not research sample size.
+
+Cross-session claims require a named comparable corpus or experimental subset with disclosed inclusion rules, denominators, metadata tiers, and sampling bias. Metadata work serves comparability; it is not a goal by itself.
+
 ## Critical External Research Absorption Rule
 
 External research should be critically absorbed.

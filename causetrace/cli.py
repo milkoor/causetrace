@@ -19,6 +19,15 @@ from .analysis import (
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
 from .corpus import benchmark_corpus, compare_benchmark_manifests, export_dataset, group_labeled_sessions, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
+from .crdd import (
+    SUBSET_DEFINITIONS,
+    analyze_gaps,
+    compile_subsets,
+    ingest_feedback,
+    plan_experiments,
+    reprioritize_experiments,
+    update_gaps,
+)
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
@@ -38,7 +47,7 @@ except Exception:
         from importlib.metadata import version as _import_version
         _CAUSETRACE_VERSION = _import_version("causetrace")
     except Exception:
-        _CAUSETRACE_VERSION = "0.1.3"
+        _CAUSETRACE_VERSION = "0.3.0"
 
 
 def _check_result(label: str, ok: bool, detail: str = "") -> tuple[bool, str, str]:
@@ -167,21 +176,31 @@ def cli(argv: list[str] | None = None) -> None:
 
     p_oc = sub.add_parser("opencode", help="Scan OpenCode logs and show tool calls")
     p_oc.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_oc.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_oc.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_oc.add_argument("--files", type=int, default=3, help="Number of log files to scan (default: 3)")
 
     p_ai = sub.add_parser("aider", help="Run aider with causetrace tracing")
     p_ai.add_argument("aider_args", nargs="*", help="Arguments passed to aider")
     p_ai.add_argument("--save", action="store_true", help="Save session after completion")
+    p_ai.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_ai.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
 
     p_co = sub.add_parser("continue", help="Scan Continue.dev logs")
     p_co.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_co.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_co.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
 
     p_cx = sub.add_parser("codex", help="Scan OpenAI Codex CLI logs")
     p_cx.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cx.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cx.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cx.add_argument("--sessions", type=int, default=3, help="Number of session dirs to scan (default: 3)")
 
     p_cp = sub.add_parser("copilot", help="Scan GitHub Copilot agent logs")
     p_cp.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cp.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cp.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cp.add_argument("--max-dirs", type=int, default=3, help="Number of log dirs to scan (default: 3)")
 
 
@@ -195,6 +214,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_enrich = sub.add_parser("enrich", help="Enrich trace from Claude Code project session (extracts reasoning)")
     p_enrich.add_argument("session_id", help="Claude Code project session ID")
     p_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     sub.add_parser("enrich-opencode-sessions", help="List available OpenCode DB sessions")
@@ -202,6 +223,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_oc_enrich = sub.add_parser("enrich-opencode", help="Enrich trace from OpenCode DB session (extracts reasoning)")
     p_oc_enrich.add_argument("session_id", help="OpenCode session ID")
     p_oc_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_oc_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_oc_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_oc_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     sub.add_parser("enrich-codex-sessions", help="List available Codex CLI rollout sessions")
@@ -209,6 +232,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_cx_enrich = sub.add_parser("enrich-codex", help="Enrich trace from Codex CLI rollout session (extracts reasoning)")
     p_cx_enrich.add_argument("session_id", help="Codex session ID")
     p_cx_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_cx_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cx_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cx_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     p_val = sub.add_parser("validate", help="Validate session integrity")
@@ -310,6 +335,36 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_readiness.add_argument("--output", "-o", help="Write report to file")
     p_cr_materialize = p_cr_sub.add_parser("materialize", help="Materialize canonical metadata sidecars from annotations and runtime hints")
     p_cr_materialize.add_argument("--output", "-o", help="Write a summary report to file")
+    p_cr_compile = p_cr_sub.add_parser("compile-subsets", help="Compile CRDD comparable subset manifests")
+    p_cr_compile.add_argument("--subset", action="append", choices=sorted(SUBSET_DEFINITIONS), help="Subset to compile (repeatable; default: all)")
+    p_cr_compile.add_argument("--name", help="Manifest run name (default: timestamp)")
+    p_cr_compile.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/manifests)")
+    p_cr_compile.add_argument("--dry-run", action="store_true", help="Build manifests without writing files")
+    p_cr_compile.add_argument("--json", action="store_true", help="Print full compile result as JSON")
+    p_cr_gaps = p_cr_sub.add_parser("analyze-gaps", help="Analyze CRDD subset coverage gaps")
+    p_cr_gaps.add_argument("--subset", action="append", choices=sorted(SUBSET_DEFINITIONS), help="Subset to analyze (repeatable; default: all)")
+    p_cr_gaps.add_argument("--output", "-o", help="Write gap report JSON to file")
+    p_cr_gaps.add_argument("--json", action="store_true", help="Print full gap report as JSON")
+    p_cr_plan = p_cr_sub.add_parser("plan-experiments", help="Plan external-only CERC experiment requirements")
+    p_cr_plan.add_argument("--target", choices=sorted(SUBSET_DEFINITIONS), default="failure_enriched", help="Target subset to plan for")
+    p_cr_plan.add_argument("--required-sessions", type=int, help="Override required missing session count")
+    p_cr_plan.add_argument("--name", help="Experiment plan run name / experiment_id")
+    p_cr_plan.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/plans)")
+    p_cr_plan.add_argument("--dry-run", action="store_true", help="Build plan without writing files")
+    p_cr_plan.add_argument("--json", action="store_true", help="Print full plan result as JSON")
+    p_cr_feedback = p_cr_sub.add_parser("ingest-feedback", help="Ingest external execution feedback and normalize it")
+    p_cr_feedback.add_argument("input", help="Feedback payload JSON path")
+    p_cr_feedback.add_argument("--plan-dir", help="Experiment plan directory to link against")
+    p_cr_feedback.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_feedback.add_argument("--json", action="store_true", help="Print full feedback report as JSON")
+    p_cr_gaps_update = p_cr_sub.add_parser("update-gaps", help="Update gap projections from feedback")
+    p_cr_gaps_update.add_argument("input", help="Feedback report JSON path")
+    p_cr_gaps_update.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_gaps_update.add_argument("--json", action="store_true", help="Print gap update report as JSON")
+    p_cr_reprioritize = p_cr_sub.add_parser("reprioritize-experiments", help="Reprioritize future experiments from feedback")
+    p_cr_reprioritize.add_argument("input", help="Feedback report JSON path")
+    p_cr_reprioritize.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_reprioritize.add_argument("--json", action="store_true", help="Print reprioritized plan as JSON")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -418,10 +473,8 @@ def cli(argv: list[str] | None = None) -> None:
         hdr = TimelineRenderer.session_header(events)
         print(f"OpenCode tool calls ({len(events)} events, {args.files} log files){hdr}\n")
         TimelineRenderer.print_timeline(events)
-        if args.save:
-            for ev in events:
-                store.append("opencode_latest", ev)
-            print(f"\nSaved as session: opencode_latest ({len(events)} events)")
+        if args.save or args.upsert or args.dry_run:
+            _persist_imported_events(store, "opencode_latest", events, args)
 
     elif args.command == "aider":
         _handle_aider(store, args)
@@ -492,10 +545,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-opencode-sessions":
@@ -528,10 +579,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-codex-sessions":
@@ -565,10 +614,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "stats":
@@ -827,6 +874,46 @@ def _detect_agent(events) -> str:
     return "unknown"
 
 
+def _persist_imported_events(
+    store: JSONStore,
+    session_id: str,
+    events: list[ToolEvent],
+    args: argparse.Namespace,
+) -> dict | None:
+    """Persist imported events through one CLI data path."""
+    use_upsert = bool(getattr(args, "upsert", False) or getattr(args, "dry_run", False))
+    dry_run = bool(getattr(args, "dry_run", False))
+    should_save = bool(getattr(args, "save", False) or use_upsert)
+    if not should_save:
+        return None
+
+    if use_upsert:
+        summary = store.append_missing(session_id, events, dry_run=dry_run)
+        verb = "Would upsert" if dry_run else "Upserted"
+        print(
+            f"\n{verb} session: {session_id} "
+            f"({summary['added']} added, {summary['skipped']} skipped, "
+            f"{summary['existing']} existing)"
+        )
+        summary["written"] = not dry_run and summary["added"] > 0
+        summary["mode"] = "upsert"
+        return summary
+
+    for event in events:
+        store.append(session_id, event)
+    print(f"\nSaved as session: {session_id} ({len(events)} events)")
+    return {
+        "session_id": session_id,
+        "incoming": len(events),
+        "existing": None,
+        "added": len(events),
+        "skipped": 0,
+        "dry_run": False,
+        "written": bool(events),
+        "mode": "append",
+    }
+
+
 def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
     """Handle `causetrace aider`."""
     from .hooks.aider_bridge import run_with_tracing
@@ -838,10 +925,7 @@ def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"\n[causetrace] Session: {recorder.session_id} ({len(events)} events)")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append(recorder.session_id, ev)
-        print(f"\nSaved as session: {recorder.session_id} ({len(events)} events)")
+    _persist_imported_events(store, recorder.session_id, events, args)
 
 
 def _handle_continue(store: JSONStore, args: argparse.Namespace) -> None:
@@ -852,10 +936,7 @@ def _handle_continue(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"Continue.dev tool calls ({len(events)} events)\n")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append("continue_latest", ev)
-        print(f"\nSaved as session: continue_latest ({len(events)} events)")
+    _persist_imported_events(store, "continue_latest", events, args)
 
 
 def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
@@ -871,10 +952,7 @@ def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
         if report["score"] < 0.7:
             print(f"\n  ⚠ Causal quality: {_quality_bar(report['score'])}")
             print(f"     (Codex logs lack native causality — links are heuristic)")
-    if args.save:
-        for ev in events:
-            store.append("codex_latest", ev)
-        print(f"\nSaved as session: codex_latest ({len(events)} events)")
+    _persist_imported_events(store, "codex_latest", events, args)
 
 
 def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
@@ -885,10 +963,7 @@ def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"Copilot tool calls ({len(events)} events, {args.max_dirs} log dirs)\n")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append("copilot_latest", ev)
-        print(f"\nSaved as session: copilot_latest ({len(events)} events)")
+    _persist_imported_events(store, "copilot_latest", events, args)
 
 
 def _print_stats(stats: dict) -> None:
@@ -1668,6 +1743,137 @@ def _handle_corpus(store, args) -> None:
             print(f"Metadata materialization report written: {args.output}")
         else:
             print(report)
+        return
+
+    if args.corpus_command == "compile-subsets":
+        result = compile_subsets(
+            store,
+            subset_ids=args.subset,
+            output_dir=args.output_dir,
+            name=args.name,
+            write=not args.dry_run,
+        )
+        if args.json:
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return
+        action = "Compiled" if result["written"] else "Dry-run compiled"
+        print(f"{action} CRDD subsets from {result['source_session_count']} session(s)")
+        print(f"Output: {result['output_dir']}")
+        for manifest in result["manifests"]:
+            score = manifest["comparability"]["score"]
+            print(
+                f"  {manifest['subset_id']}: "
+                f"{manifest['selected_count']} selected, "
+                f"{manifest['excluded_count']} excluded, "
+                f"score={score}"
+            )
+        return
+
+    if args.corpus_command == "analyze-gaps":
+        report = analyze_gaps(store, subset_ids=args.subset, output=args.output)
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        if args.output:
+            print(f"Gap report written: {args.output}")
+        print(f"CERC gap report from {report['source_session_count']} session(s)")
+        for gap in report["subset_gaps"]:
+            print(
+                f"  {gap['subset_id']}: "
+                f"{gap['current_sessions']}/{gap['target_sessions']} "
+                f"(missing {gap['missing_sessions']}, "
+                f"severity={gap['severity']}, "
+                f"score={gap['comparability_score']})"
+            )
+        return
+
+    if args.corpus_command == "plan-experiments":
+        result = plan_experiments(
+            store,
+            target_subset=args.target,
+            required_sessions=args.required_sessions,
+            output_dir=args.output_dir,
+            name=args.name,
+            write=not args.dry_run,
+        )
+        if args.json:
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return
+        plan = result["plan"]
+        queue = plan["experiment_queue"]
+        gap = plan["gap"]
+        action = "Planned" if result["written"] else "Dry-run planned"
+        print(f"{action} CERC experiment: {queue['experiment_id']}")
+        print(f"Output: {result['output_dir']}")
+        print(f"Target subset: {queue['target_subset']}")
+        print(f"Current/target: {gap['current_sessions']}/{gap['target_sessions']}")
+        print(f"Required sessions: {queue['required_sessions']}")
+        print(f"Execution mode: {queue['execution_mode']}")
+        print(f"Must not execute: {queue['must_not_execute']}")
+        print(f"Evidence status: {queue['evidence_status']}")
+        print(f"Queue validation: {queue['validation']['ok']}")
+        return
+
+    if args.corpus_command == "ingest-feedback":
+        report = ingest_feedback(
+            store,
+            input_path=args.input,
+            plan_dir=args.plan_dir,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Feedback report: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Observed/resolved: {report['observed_count']}/{report['resolved_count']}")
+        print(f"  Resolved ratio: {report['quality']['resolved_ratio']}")
+        print(f"  External only: {report['constraints']['external_only']}")
+        return
+
+    if args.corpus_command == "update-gaps":
+        feedback_report = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        report = update_gaps(
+            store,
+            feedback_report=feedback_report,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Gap update: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Remaining sessions: {report['remaining_sessions']}")
+        print(f"  Status: {report['status']}")
+        print(f"  Priority hint: {report['priority_hint']}")
+        return
+
+    if args.corpus_command == "reprioritize-experiments":
+        feedback_report = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        report = reprioritize_experiments(
+            store,
+            feedback_report=feedback_report,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Reprioritized plan: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Remaining sessions: {report['feedback_summary']['remaining_sessions']}")
+        print(f"  Top priority: {report['priorities'][0]['subset_id'] if report['priorities'] else 'none'}")
         return
 
     if args.corpus_command == "verify":

@@ -2,6 +2,12 @@
 
 Phase 4-3 is a trigger-based evidence refresh pass for Runtime Morphology Theory Draft v0.1. It will not be opened by calendar schedule. It opens only when one or more trigger conditions are met by corpus growth.
 
+CRDD adds a continuous sampling layer before formal Phase 4-3. Sampling may build
+balanced, failure-enriched, or intervention-specific subset manifests at any
+time. Those manifests do not upgrade evidence grades by themselves; they prepare
+comparable corpora so that a later trigger-based refresh can use defensible
+denominators.
+
 ## Status
 
 - Phase 4-1 (evidence grading): complete
@@ -109,6 +115,12 @@ causetrace corpus gate-status
 ```
 
 Compare against trigger thresholds. If any trigger fires, open Phase 4-3 for the affected candidate set only. Do not re-grade unaffected candidates.
+
+Before opening a formal refresh, also check whether the affected sessions belong
+to a named comparable subset under
+[`Causal Runtime Dataset Design v0.1`](../dataset_design/crdd_v0.1.md). If no
+comparable subset exists, create the subset manifest first and treat the run as a
+sampling pass, not an evidence-grade update.
 
 ## Partial Phase 4-3
 
