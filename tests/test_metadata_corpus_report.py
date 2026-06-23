@@ -1188,3 +1188,72 @@ def test_cerc_feedback_cli_commands(monkeypatch, tmp_path):
     )
     assert reprioritize_cmd.returncode == 0
     assert "Top priority:" in reprioritize_cmd.stdout
+
+
+def test_cerc_plan_validation_detects_duplicates(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import plan_experiments, validate_experiment_plan
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+
+    plan_a = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_a",
+        output_dir=tmp_path / "plans",
+    )
+    plan_b = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_b",
+        output_dir=tmp_path / "plans",
+    )
+
+    report = validate_experiment_plan(store, plan_dir=Path(plan_b["output_dir"]), output_dir=tmp_path / "plan-validation")
+    assert report["constraints"]["external_only"] is True
+    assert report["validation"]["status"] == "duplicate"
+    assert report["duplicate_plans"]
+    assert Path(report["output_dir"]).joinpath("plan_validation.json").exists()
+    assert Path(report["output_dir"]).joinpath("plan_validation.md").exists()
+
+
+def test_cerc_plan_validation_cli(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import plan_experiments
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+
+    plan_result = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_cli",
+        output_dir=tmp_path / "plans",
+    )
+
+    cmd = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "causetrace",
+            "corpus",
+            "validate-plan",
+            str(Path(plan_result["output_dir"])),
+            "--output-dir",
+            str(tmp_path / "plan-validation"),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert cmd.returncode == 0
+    assert "Validation ok:" in cmd.stdout
+    assert "Status:" in cmd.stdout

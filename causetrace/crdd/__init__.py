@@ -8,6 +8,7 @@ from .comparability_score import compute_comparability_score
 from .feedback import ingest_feedback, reprioritize_experiments, update_gaps
 from .experiment_planner import plan_experiments
 from .gap_analyzer import analyze_gaps
+from .plan_validation import validate_experiment_plan
 from .subset_builder import build_subset, compile_subsets
 from .subset_registry import SUBSET_DEFINITIONS, get_subset_definition
 
@@ -20,6 +21,7 @@ __all__ = [
     "ingest_feedback",
     "get_subset_definition",
     "plan_experiments",
+    "validate_experiment_plan",
     "reprioritize_experiments",
     "update_gaps",
 ]

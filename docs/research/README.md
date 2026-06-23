@@ -69,6 +69,7 @@ Phase 4 must not enter:
 - [Subset Manifest Template](dataset_design/subset_manifest_template.md): required structure for comparable and experimental subsets used in Phase 4 candidate revalidation.
 - [Causal Experiment Requirement Compiler v0.3](dataset_design/cerc_v0.3.md): experiment planning layer that turns observed subset gaps into external-only execution queues. CERC plans do not execute agents, inflate evidence, or upgrade Phase 4 grades.
 - [CERC Feedback Integration v0.4](dataset_design/feedback_v0.4.md): read-only feedback layer that ingests external execution results, updates gap projections, and reprioritizes future experiments without changing runtime authority.
+- [CERC Plan Validation v0.3.1](dataset_design/plan_validation_v0.3.1.md): read-only checker for duplicate plans, queue constraints, and whether a planned sampling gap still needs collection.
 
 ## Roadmap And Future Directions
 

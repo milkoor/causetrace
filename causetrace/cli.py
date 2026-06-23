@@ -25,6 +25,7 @@ from .crdd import (
     compile_subsets,
     ingest_feedback,
     plan_experiments,
+    validate_experiment_plan,
     reprioritize_experiments,
     update_gaps,
 )
@@ -365,6 +366,10 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_reprioritize.add_argument("input", help="Feedback report JSON path")
     p_cr_reprioritize.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
     p_cr_reprioritize.add_argument("--json", action="store_true", help="Print reprioritized plan as JSON")
+    p_cr_validate = p_cr_sub.add_parser("validate-plan", help="Validate a CERC experiment plan without executing it")
+    p_cr_validate.add_argument("plan_dir", help="Experiment plan directory")
+    p_cr_validate.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/plan_validation)")
+    p_cr_validate.add_argument("--json", action="store_true", help="Print full validation report as JSON")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -1874,6 +1879,27 @@ def _handle_corpus(store, args) -> None:
         print(f"  Target subset: {report['target_subset']}")
         print(f"  Remaining sessions: {report['feedback_summary']['remaining_sessions']}")
         print(f"  Top priority: {report['priorities'][0]['subset_id'] if report['priorities'] else 'none'}")
+        return
+
+    if args.corpus_command == "validate-plan":
+        report = validate_experiment_plan(
+            store,
+            plan_dir=args.plan_dir,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Plan validation: {report['output_dir']}")
+        print(f"  Plan dir: {report['plan_dir']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Required sessions: {report['required_sessions']}")
+        print(f"  Missing sessions: {report['necessity']['missing_sessions']}")
+        print(f"  Duplicate plans: {len(report['duplicate_plans'])}")
+        print(f"  Validation ok: {report['validation']['ok']}")
+        print(f"  Status: {report['validation']['status']}")
         return
 
     if args.corpus_command == "verify":
