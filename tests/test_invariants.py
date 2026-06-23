@@ -184,6 +184,138 @@ def test_json_store_append_only_preserves_order():
         assert names == ["Read", "Write", "Bash"], f"order broken: {names}"
 
 
+def test_json_store_append_missing_skips_reparsed_events():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = JSONStore(store_dir=tmp)
+        session_id = "reparsed"
+        original = [
+            ToolEvent(
+                "Read",
+                {"file_path": "a.py"},
+                event_id="old_read",
+                timestamp="2026-01-01T00:00:00",
+                agent="codex",
+            ),
+            ToolEvent(
+                "Bash",
+                {"command": "pytest"},
+                event_id="old_bash",
+                parent_event_id="old_read",
+                timestamp="2026-01-01T00:00:01",
+                agent="codex",
+            ),
+        ]
+        for event in original:
+            store.append(session_id, event)
+
+        reparsed = [
+            ToolEvent(
+                "Read",
+                {"file_path": "a.py"},
+                event_id="new_read",
+                timestamp="2026-01-01T00:00:00",
+                agent="codex",
+            ),
+            ToolEvent(
+                "Bash",
+                {"command": "pytest"},
+                event_id="new_bash",
+                parent_event_id="new_read",
+                timestamp="2026-01-01T00:00:01",
+                agent="codex",
+            ),
+        ]
+
+        summary = store.append_missing(session_id, reparsed)
+        loaded = store.load(session_id)
+
+        assert summary["added"] == 0
+        assert summary["skipped"] == 2
+        assert [event.event_id for event in loaded] == ["old_read", "old_bash"]
+
+
+def test_json_store_append_missing_remaps_new_parent_refs():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = JSONStore(store_dir=tmp)
+        session_id = "tail"
+        store.append(
+            session_id,
+            ToolEvent(
+                "Read",
+                {"file_path": "a.py"},
+                event_id="old_read",
+                timestamp="2026-01-01T00:00:00",
+                agent="codex",
+            ),
+        )
+        store.append(
+            session_id,
+            ToolEvent(
+                "Bash",
+                {"command": "pytest"},
+                event_id="old_bash",
+                parent_event_id="old_read",
+                timestamp="2026-01-01T00:00:01",
+                agent="codex",
+            ),
+        )
+
+        reparsed_with_tail = [
+            ToolEvent(
+                "Read",
+                {"file_path": "a.py"},
+                event_id="new_read",
+                timestamp="2026-01-01T00:00:00",
+                agent="codex",
+            ),
+            ToolEvent(
+                "Bash",
+                {"command": "pytest"},
+                event_id="new_bash",
+                parent_event_id="new_read",
+                timestamp="2026-01-01T00:00:01",
+                agent="codex",
+            ),
+            ToolEvent(
+                "Response",
+                {"text": "done"},
+                event_id="new_response",
+                parent_event_id="new_bash",
+                timestamp="2026-01-01T00:00:02",
+                event_type="reasoning",
+                agent="codex",
+            ),
+        ]
+
+        summary = store.append_missing(session_id, reparsed_with_tail)
+        loaded = store.load(session_id)
+
+        assert summary["added"] == 1
+        assert summary["skipped"] == 2
+        assert loaded[-1].event_id == "new_response"
+        assert loaded[-1].parent_event_id == "old_bash"
+
+
+def test_json_store_append_missing_dry_run_does_not_write():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = JSONStore(store_dir=tmp)
+        incoming = [
+            ToolEvent(
+                "Read",
+                {"file_path": "a.py"},
+                event_id="read",
+                timestamp="2026-01-01T00:00:00",
+                agent="codex",
+            )
+        ]
+
+        summary = store.append_missing("dry", incoming, dry_run=True)
+
+        assert summary["added"] == 1
+        assert summary["dry_run"] is True
+        assert store.load("dry") == []
+
+
 def test_json_store_multiple_sessions():
     with tempfile.TemporaryDirectory() as tmp:
         store = JSONStore(store_dir=tmp)

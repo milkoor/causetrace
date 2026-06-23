@@ -207,6 +207,45 @@ def test_parse_session_only_tools():
         mod.DB_PATH = original
 
 
+def test_parse_session_uses_db_time_as_stable_fallback():
+    tmpdir = Path(tempfile.mkdtemp())
+    db_path = tmpdir / "opencode.db"
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE session (id TEXT PRIMARY KEY, slug TEXT, title TEXT, project_id TEXT, "
+                 "time_created INTEGER, time_updated INTEGER)")
+    conn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, "
+                 "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)")
+    conn.execute("CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, session_id TEXT NOT NULL, "
+                 "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)")
+
+    sid = "stable_time"
+    conn.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?)",
+                 (sid, "stable", "Stable Time", "p1", 1000, 2000))
+    conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)",
+                 ("m0", sid, 1000, 1000, json.dumps({"role": "user"})))
+    conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)",
+                 ("m1", sid, 1778724854161, 1778724854161,
+                  json.dumps({"role": "assistant", "parentID": "m0"})))
+    conn.execute("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)",
+                 ("p1", "m1", sid, 1778724854161, 1778724854161,
+                  json.dumps({"type": "tool", "tool": "bash", "state": {"input": {"command": "ls"}}})))
+    conn.commit()
+    conn.close()
+
+    import causetrace.hooks.opencode_parser as mod
+    original = mod.DB_PATH
+    mod.DB_PATH = db_path
+    try:
+        first = parse_session(sid)
+        second = parse_session(sid)
+        assert len(first) == 1
+        assert first[0].timestamp.startswith("2026-05-14")
+        assert first[0].timestamp == second[0].timestamp
+    finally:
+        mod.DB_PATH = original
+
+
 def test_parse_session_not_found():
     """Non-existent session returns empty list."""
     tmpdir = Path(tempfile.mkdtemp())

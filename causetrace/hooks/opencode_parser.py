@@ -100,7 +100,11 @@ def _get_parent_model(
 
 
 def _parse_part(
-    part_data: dict, msg_data: dict, model_info: Dict[str, str], index: int
+    part_data: dict,
+    msg_data: dict,
+    model_info: Dict[str, str],
+    index: int,
+    fallback_ms: Optional[int] = None,
 ) -> Optional[ToolEvent]:
     """Convert a part entry into a ToolEvent. Returns None for skipped types."""
     ptype = part_data.get("type", "")
@@ -110,7 +114,7 @@ def _parse_part(
             tool_name="Thinking",
             tool_input={"content": (part_data.get("text") or "")[:2000]},
             event_type="reasoning",
-            timestamp=_extract_ts(part_data, "start"),
+            timestamp=_extract_ts(part_data, "start", fallback_ms=fallback_ms),
             model=model_info.get("model"),
             provider=model_info.get("provider"),
             agent=model_info.get("agent") or "opencode",
@@ -124,7 +128,7 @@ def _parse_part(
             tool_name="Response",
             tool_input={"text": text[:500]},
             event_type="reasoning",
-            timestamp=_extract_ts(part_data, "start"),
+            timestamp=_extract_ts(part_data, "start", fallback_ms=fallback_ms),
             model=model_info.get("model"),
             provider=model_info.get("provider"),
             agent=model_info.get("agent") or "opencode",
@@ -141,7 +145,7 @@ def _parse_part(
             tool_input=tool_input if isinstance(tool_input, dict) else {"text": str(tool_input)[:2000]},
             tool_output=tool_output,
             event_type="tool_call",
-            timestamp=_extract_ts(part_data, "start"),
+            timestamp=_extract_ts(part_data, "start", fallback_ms=fallback_ms),
             duration_ms=duration,
             model=model_info.get("model"),
             provider=model_info.get("provider"),
@@ -154,7 +158,7 @@ def _parse_part(
             tool_name="Edit",
             tool_input={"files": files},
             event_type="tool_call",
-            timestamp=_extract_ts(part_data, "start"),
+            timestamp=_extract_ts(part_data, "start", fallback_ms=fallback_ms),
             agent="opencode",
         )
 
@@ -293,13 +297,9 @@ def parse_session(session_id: str) -> List[ToolEvent]:
         else:
             parent_info = _get_parent_model(msg_data.get("parentID"), model_cache)
 
-        event = _parse_part(part_data, msg_data, parent_info, 0)
+        event = _parse_part(part_data, msg_data, parent_info, 0, fallback_ms=ts_ms)
         if event is None:
             continue
-
-        # Use DB time_created as fallback timestamp if part lacks embedded time
-        if event.timestamp is None and ts_ms:
-            event.timestamp = _extract_ts({"time": {"start": ts_ms}}, "start")
 
         event.parent_event_id = last_event_id
         events.append(event)

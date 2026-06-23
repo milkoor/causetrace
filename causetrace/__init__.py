@@ -5,7 +5,7 @@ from .hooks.claude_project_parser import parse_session as enrich_session, list_s
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
 
-__version__ = "0.2.5"
+__version__ = "0.3.0"
 __all__ = [
     "ToolEvent", "TraceRecorder", "JSONStore", "TimelineRenderer",
     "ReplayEngine", "build_tree", "infer_relations", "build_causal_graph", "cli",

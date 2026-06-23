@@ -13,6 +13,8 @@ Phase 4 consolidates evidence-graded theory candidates from Phase 3D (hypothesis
 
 Convert the strongest evidence-backed findings from Phase 3D and Phase 3E into graded theory candidates. Each candidate must carry an evidence grade, a corpus snapshot, a lane scope, a denominator, runtime/task caveats, and a falsification condition.
 
+Observed runtime morphology is an external behavioral projection. Future agent systems may use latent, compressed, or machine-readable communication that improves performance while reducing human auditability. Prompt-level compressed text and structured `machine_state` remain observable; true hidden-state, embedding, or KV-cache communication would be a different channel class. This is currently a theory-boundary caveat and does not change existing evidence grades.
+
 ## What Phase 4 Is
 
 - Evidence-graded theory drafting

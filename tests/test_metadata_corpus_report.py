@@ -12,7 +12,7 @@ from causetrace.analysis import (
 from causetrace.annotation import save_annotation
 from causetrace.core import JSONStore, ToolEvent
 from causetrace.corpus import Phase3ReadinessRequirements, assess_phase3_readiness, benchmark_corpus, build_corpus_facts, compare_benchmark_manifests, export_dataset, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
-from causetrace.metadata import load_metadata, load_metadata_provenance, merge_metadata
+from causetrace.metadata import load_metadata, load_metadata_provenance, merge_metadata, merge_metadata_provenance
 from causetrace.report import generate_corpus_health_report, generate_corpus_origin_report, generate_phase3_readiness_report
 from causetrace.corpus import summarize_corpus_health
 
@@ -50,6 +50,30 @@ def test_metadata_merges_legacy_annotation(monkeypatch, tmp_path):
     assert updated.runtime == "codex"
     assert updated.data_origin == "native"
     assert load_metadata("s1").model == "gpt-5"
+
+
+def test_metadata_accepts_behavior_distribution_fields(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    empty = load_metadata("empty").to_dict()
+    assert empty == {}
+
+    updated = merge_metadata("s1", {
+        "behavior_distribution_tag": "prompt_ablation_v1",
+        "bde_generated": "true",
+        "experiment_id": "exp_001",
+        "control_group_id": "ctrl_a",
+    })
+
+    assert updated.behavior_distribution_tag == "prompt_ablation_v1"
+    assert updated.bde_generated is True
+    assert updated.experiment_id == "exp_001"
+    assert updated.control_group_id == "ctrl_a"
+
+    saved = load_metadata("s1")
+    assert saved.bde_generated is True
 
 
 def test_corpus_snapshot_and_export(monkeypatch, tmp_path):
@@ -708,3 +732,528 @@ def test_corpus_verify_cli(monkeypatch, tmp_path):
     assert result.returncode == 0
     assert "Snapshot:" in result.stdout
     assert "OK: True" in result.stdout
+
+
+def test_crdd_compile_subsets_read_only_and_cli(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import compile_subsets
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "native-success")
+    _write_session(store, "native-failure")
+    _write_session(store, "intervention")
+    _write_session(store, "codex-success")
+
+    merge_metadata("native-success", {
+        "data_origin": "native",
+        "runtime": "claude",
+        "task_type": "feature_add",
+        "task_source": "real_work",
+        "success": True,
+    })
+    merge_metadata("native-failure", {
+        "data_origin": "native",
+        "runtime": "claude",
+        "task_type": "bug_fix",
+        "task_source": "real_work",
+        "success": False,
+    })
+    merge_metadata("intervention", {
+        "data_origin": "native",
+        "runtime": "claude",
+        "task_type": "exploration",
+        "task_source": "superpowers_workflow_intervention",
+        "intervention_lane": "superpowers_workflow_intervention",
+        "success": True,
+        "human_intervention": True,
+    })
+    merge_metadata("codex-success", {
+        "data_origin": "native",
+        "runtime": "codex",
+        "task_type": "feature_add",
+        "task_source": "real_work",
+        "success": True,
+    })
+
+    before = sorted((tmp_path / "data").glob("*.jsonl"))
+    result = compile_subsets(
+        store,
+        subset_ids=["strict_research_grade", "failure_enriched", "intervention_lane", "balanced_cross_runtime"],
+        output_dir=tmp_path / "subsets",
+        name="daily",
+    )
+    after = sorted((tmp_path / "data").glob("*.jsonl"))
+
+    assert before == after
+    assert result["source_session_count"] == 4
+    assert (tmp_path / "subsets" / "daily" / "index.json").exists()
+
+    manifests = {manifest["subset_id"]: manifest for manifest in result["manifests"]}
+    assert manifests["strict_research_grade"]["selected_count"] == 4
+    assert manifests["failure_enriched"]["session_ids"] == ["intervention", "native-failure"]
+    assert manifests["intervention_lane"]["session_ids"] == ["intervention"]
+    assert manifests["balanced_cross_runtime"]["selected_count"] == 2
+    assert 0 <= manifests["strict_research_grade"]["comparability"]["score"] <= 1
+    assert manifests["failure_enriched"]["bias_register"]["failure_scarcity"]["present"] is True
+
+    cli_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "causetrace",
+            "corpus",
+            "compile-subsets",
+            "--subset",
+            "strict_research_grade",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+
+    assert cli_result.returncode == 0
+    assert "Dry-run compiled CRDD subsets" in cli_result.stdout
+    assert "strict_research_grade" in cli_result.stdout
+
+
+def test_cerc_gap_analysis_and_experiment_plan_are_external_only(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import analyze_gaps, plan_experiments
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "failure")
+    _write_session(store, "success")
+    merge_metadata("failure", {
+        "runtime": "codex",
+        "task_type": "bug_fix",
+        "task_source": "real_work",
+        "success": False,
+    })
+    merge_metadata("success", {
+        "runtime": "claude",
+        "task_type": "feature_add",
+        "task_source": "real_work",
+        "success": True,
+    })
+
+    gap_report = analyze_gaps(store, subset_ids=["failure_enriched"])
+    assert gap_report["subset_gaps"][0]["subset_id"] == "failure_enriched"
+    assert gap_report["subset_gaps"][0]["current_sessions"] == 1
+    assert gap_report["subset_gaps"][0]["missing_sessions"] == 49
+
+    before = sorted((tmp_path / "data").glob("*.jsonl"))
+    result = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        output_dir=tmp_path / "plans",
+        name="exp_failure_test",
+    )
+    after = sorted((tmp_path / "data").glob("*.jsonl"))
+    queue = result["plan"]["experiment_queue"]
+
+    assert before == after
+    assert result["written"] is True
+    assert (tmp_path / "plans" / "exp_failure_test" / "gap_report.json").exists()
+    assert (tmp_path / "plans" / "exp_failure_test" / "experiment_queue.json").exists()
+    assert (tmp_path / "plans" / "exp_failure_test" / "experiment_plan.md").exists()
+    assert queue["execution_mode"] == "external_only"
+    assert queue["must_not_execute"] is True
+    assert queue["evidence_status"] == "planned_not_observed"
+    assert queue["observed_session_count"] == 0
+    assert queue["phase4_grade_effect"] == "none"
+    assert queue["validation"]["ok"] is True
+    assert all(scenario["descriptor_only"] is True for scenario in queue["bde_scenarios"])
+    assert "command" not in json.dumps(queue)
+
+
+def test_cerc_cli_analyze_and_plan_dry_run(tmp_path):
+    home = tmp_path / "home"
+    store = JSONStore(store_dir=str(home / ".causetrace" / "data"))
+    _write_session(store, "failure")
+
+    env = {**os.environ, "HOME": str(home)}
+    metadata_dir = home / ".causetrace" / "metadata"
+    metadata_dir.mkdir(parents=True)
+    (metadata_dir / "failure.json").write_text(json.dumps({
+        "session_id": "failure",
+        "runtime": "codex",
+        "task_type": "bug_fix",
+        "task_source": "real_work",
+        "success": False,
+    }))
+
+    gaps = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "analyze-gaps", "--subset", "failure_enriched"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert gaps.returncode == 0
+    assert "CERC gap report" in gaps.stdout
+    assert "failure_enriched" in gaps.stdout
+
+    plan = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "causetrace",
+            "corpus",
+            "plan-experiments",
+            "--target",
+            "failure_enriched",
+            "--dry-run",
+            "--name",
+            "exp_cli_dry",
+            "--output-dir",
+            str(tmp_path / "cli-plans"),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert plan.returncode == 0
+    assert "Dry-run planned CERC experiment" in plan.stdout
+    assert "Execution mode: external_only" in plan.stdout
+    assert "Must not execute: True" in plan.stdout
+    assert not (tmp_path / "cli-plans" / "exp_cli_dry").exists()
+
+
+def test_bde_interfaces_are_metadata_only():
+    from causetrace.bde import BehaviorScenario, FailureInjection, MultiAgentSimulation, PromptVariant, TaskDistribution
+
+    scenario = BehaviorScenario(
+        scenario_id="scn_1",
+        task="fix failing test",
+        behavior_distribution_tag="ablation",
+        prompt_variants=(PromptVariant("A", "minimal"), PromptVariant("B", "structured")),
+        experiment_id="exp_1",
+        control_group_id="control",
+    )
+    distribution = TaskDistribution("dist_1", ("bug_fix", "feature_add"), {"bug_fix": 0.5})
+    failure = FailureInjection("fail_1", "ambiguous_requirements", target_task_type="bug_fix")
+    simulation = MultiAgentSimulation("sim_1", ("planner", "executor"))
+
+    assert scenario.prompt_variants[0].variant_id == "A"
+    assert distribution.task_types == ("bug_fix", "feature_add")
+    assert failure.failure_mode == "ambiguous_requirements"
+    assert simulation.agent_roles == ("planner", "executor")
+
+
+# ── classify-unlabeled tests ──────────────────────────────────────────
+
+
+def test_classify_unlabeled_dry_run_no_write(monkeypatch, tmp_path):
+    """classify-unlabeled --dry-run must not write to metadata sidecars."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    # Write a session that qualifies for high-confidence classification
+    sid = "test-native-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=False)
+
+    # Metadata must NOT be modified
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+
+
+def test_classify_unlabeled_apply_confirmed_writes_high_confidence(monkeypatch, tmp_path):
+    """--apply-confirmed writes intervention_lane for high-confidence proposals."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-native-002"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    # Metadata must now have intervention_lane
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert meta.get("intervention_lane") == "direct_prompt_native"
+
+    # Provenance must be written
+    prov = json.loads((mdir / f"{sid}.provenance.json").read_text())
+    assert prov.get("intervention_lane") == "classified_from_explicit_metadata"
+
+
+def test_classify_unlabeled_unknown_unchanged(monkeypatch, tmp_path):
+    """data_origin=unknown sessions must remain unmodified."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-unknown-001"
+    original = {"session_id": sid, "data_origin": "unknown", "runtime": "codex"}
+    (mdir / f"{sid}.json").write_text(json.dumps(original))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+    assert meta.get("data_origin") == "unknown"
+
+
+def test_classify_unlabeled_preserves_existing_lane(monkeypatch, tmp_path):
+    """Existing intervention_lane must not be overwritten."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-sp-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "superpowers_workflow_intervention",
+        "intervention_lane": "superpowers_workflow_intervention",
+        "runtime": "claude-code",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert meta.get("intervention_lane") == "superpowers_workflow_intervention"
+
+
+def test_classify_unlabeled_medium_not_applied(monkeypatch, tmp_path):
+    """Medium-confidence proposals are never applied even with --apply-confirmed."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-medium-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "runtime": "anthropic",
+    }))
+
+    _print_classify_unlabeled(min_confidence="medium", apply_confirmed=True)
+
+    # Medium confidence => not applied
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+
+
+def test_classify_unlabeled_high_confidence_not_applied_if_tags(monkeypatch, tmp_path):
+    """Sessions with causetrace_tags are skipped even if native+real_work."""
+    import causetrace.metadata as metadata
+    from causetrace.cli import _print_classify_unlabeled
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    mdir = Path(metadata.METADATA_DIR)
+    mdir.mkdir(parents=True)
+
+    sid = "test-tagged-001"
+    (mdir / f"{sid}.json").write_text(json.dumps({
+        "session_id": sid,
+        "data_origin": "native",
+        "task_source": "real_work",
+        "causetrace_tags": ["superpowers-workflow"],
+        "runtime": "claude-code",
+    }))
+
+    _print_classify_unlabeled(min_confidence="high", apply_confirmed=True)
+
+    meta = json.loads((mdir / f"{sid}.json").read_text())
+    assert "intervention_lane" not in meta
+
+
+def test_cerc_feedback_ingest_update_and_reprioritize(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import ingest_feedback, plan_experiments, reprioritize_experiments, update_gaps
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    _write_session(store, "s2")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+    merge_metadata("s2", {"runtime": "claude", "task_type": "review", "task_source": "real_work", "success": True})
+
+    plan_result = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=7,
+        name="exp_feedback",
+        output_dir=tmp_path / "plans",
+    )
+    plan_dir = Path(plan_result["output_dir"])
+    payload_path = tmp_path / "feedback.json"
+    payload_path.write_text(json.dumps({
+        "experiment_id": "exp_feedback",
+        "target_subset": "failure_enriched",
+        "observed_sessions": [
+            "s1",
+            "s2",
+            {"label": "missing-session", "runtime": "opencode"},
+        ],
+    }))
+
+    report = ingest_feedback(store, input_path=payload_path, plan_dir=plan_dir, output_dir=tmp_path / "feedback")
+    assert report["constraints"]["external_only"] is True
+    assert report["observed_count"] == 3
+    assert report["resolved_count"] == 2
+    assert report["unresolved_session_ids"] == ["missing-session"]
+    assert report["plan_queue"]["experiment_id"] == "exp_feedback"
+    assert report["gap_projection"]["target_sessions"] == 7
+    assert report["gap_projection"]["remaining_sessions"] == 4
+    assert (Path(report["output_dir"]) / "feedback_report.json").exists()
+
+    gap_update = update_gaps(store, feedback_report=report, output_dir=tmp_path / "feedback")
+    assert gap_update["status"] in {"met", "under_target"}
+    assert gap_update["priority_hint"] in {"reprioritize", "hold"}
+    assert (Path(gap_update["output_dir"]) / "gap_update.json").exists()
+
+    prioritized = reprioritize_experiments(store, feedback_report=report, output_dir=tmp_path / "feedback")
+    assert prioritized["constraints"]["no_execution"] is True
+    assert prioritized["constraints"]["no_evidence_inflation"] is True
+    assert prioritized["priorities"]
+    assert (Path(prioritized["output_dir"]) / "reprioritized_plan.json").exists()
+
+
+def test_cerc_feedback_cli_commands(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import plan_experiments
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+
+    plan_result = plan_experiments(store, target_subset="failure_enriched", name="exp_cli", output_dir=tmp_path / "plans")
+    plan_dir = Path(plan_result["output_dir"])
+    payload_path = tmp_path / "feedback.json"
+    payload_path.write_text(json.dumps({
+        "experiment_id": "exp_cli",
+        "target_subset": "failure_enriched",
+        "observed_sessions": ["s1"],
+    }))
+
+    ingest_cmd = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "ingest-feedback", str(payload_path), "--plan-dir", str(plan_dir), "--output-dir", str(tmp_path / "feedback")],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert ingest_cmd.returncode == 0
+    assert "External only: True" in ingest_cmd.stdout
+
+    report_path = Path(tmp_path / "feedback" / "exp_cli" / "feedback_report.json")
+    update_cmd = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "update-gaps", str(report_path), "--output-dir", str(tmp_path / "feedback")],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert update_cmd.returncode == 0
+    assert "Priority hint:" in update_cmd.stdout
+
+    reprioritize_cmd = subprocess.run(
+        [sys.executable, "-m", "causetrace", "corpus", "reprioritize-experiments", str(report_path), "--output-dir", str(tmp_path / "feedback")],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert reprioritize_cmd.returncode == 0
+    assert "Top priority:" in reprioritize_cmd.stdout
+
+
+def test_cerc_plan_validation_detects_duplicates(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import plan_experiments, validate_experiment_plan
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+
+    plan_a = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_a",
+        output_dir=tmp_path / "plans",
+    )
+    plan_b = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_b",
+        output_dir=tmp_path / "plans",
+    )
+
+    report = validate_experiment_plan(store, plan_dir=Path(plan_b["output_dir"]), output_dir=tmp_path / "plan-validation")
+    assert report["constraints"]["external_only"] is True
+    assert report["validation"]["status"] == "duplicate"
+    assert report["duplicate_plans"]
+    assert Path(report["output_dir"]).joinpath("plan_validation.json").exists()
+    assert Path(report["output_dir"]).joinpath("plan_validation.md").exists()
+
+
+def test_cerc_plan_validation_cli(monkeypatch, tmp_path):
+    import causetrace.metadata as metadata
+    from causetrace.crdd import plan_experiments
+
+    monkeypatch.setattr(metadata, "METADATA_DIR", str(tmp_path / "metadata"))
+    store = JSONStore(store_dir=str(tmp_path / "data"))
+    _write_session(store, "s1")
+    merge_metadata("s1", {"runtime": "codex", "task_type": "bug_fix", "task_source": "real_work", "success": False})
+
+    plan_result = plan_experiments(
+        store,
+        target_subset="failure_enriched",
+        required_sessions=5,
+        name="exp_plan_cli",
+        output_dir=tmp_path / "plans",
+    )
+
+    cmd = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "causetrace",
+            "corpus",
+            "validate-plan",
+            str(Path(plan_result["output_dir"])),
+            "--output-dir",
+            str(tmp_path / "plan-validation"),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert cmd.returncode == 0
+    assert "Validation ok:" in cmd.stdout
+    assert "Status:" in cmd.stdout
