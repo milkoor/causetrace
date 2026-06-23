@@ -19,6 +19,15 @@ from .analysis import (
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
 from .corpus import benchmark_corpus, compare_benchmark_manifests, export_dataset, group_labeled_sessions, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
+from .crdd import (
+    SUBSET_DEFINITIONS,
+    analyze_gaps,
+    compile_subsets,
+    ingest_feedback,
+    plan_experiments,
+    reprioritize_experiments,
+    update_gaps,
+)
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
@@ -38,7 +47,7 @@ except Exception:
         from importlib.metadata import version as _import_version
         _CAUSETRACE_VERSION = _import_version("causetrace")
     except Exception:
-        _CAUSETRACE_VERSION = "0.1.3"
+        _CAUSETRACE_VERSION = "0.3.0"
 
 
 def _check_result(label: str, ok: bool, detail: str = "") -> tuple[bool, str, str]:
@@ -167,21 +176,31 @@ def cli(argv: list[str] | None = None) -> None:
 
     p_oc = sub.add_parser("opencode", help="Scan OpenCode logs and show tool calls")
     p_oc.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_oc.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_oc.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_oc.add_argument("--files", type=int, default=3, help="Number of log files to scan (default: 3)")
 
     p_ai = sub.add_parser("aider", help="Run aider with causetrace tracing")
     p_ai.add_argument("aider_args", nargs="*", help="Arguments passed to aider")
     p_ai.add_argument("--save", action="store_true", help="Save session after completion")
+    p_ai.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_ai.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
 
     p_co = sub.add_parser("continue", help="Scan Continue.dev logs")
     p_co.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_co.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_co.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
 
     p_cx = sub.add_parser("codex", help="Scan OpenAI Codex CLI logs")
     p_cx.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cx.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cx.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cx.add_argument("--sessions", type=int, default=3, help="Number of session dirs to scan (default: 3)")
 
     p_cp = sub.add_parser("copilot", help="Scan GitHub Copilot agent logs")
     p_cp.add_argument("--save", action="store_true", help="Save as a new causetrace session")
+    p_cp.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cp.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cp.add_argument("--max-dirs", type=int, default=3, help="Number of log dirs to scan (default: 3)")
 
 
@@ -195,6 +214,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_enrich = sub.add_parser("enrich", help="Enrich trace from Claude Code project session (extracts reasoning)")
     p_enrich.add_argument("session_id", help="Claude Code project session ID")
     p_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     sub.add_parser("enrich-opencode-sessions", help="List available OpenCode DB sessions")
@@ -202,6 +223,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_oc_enrich = sub.add_parser("enrich-opencode", help="Enrich trace from OpenCode DB session (extracts reasoning)")
     p_oc_enrich.add_argument("session_id", help="OpenCode session ID")
     p_oc_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_oc_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_oc_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_oc_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     sub.add_parser("enrich-codex-sessions", help="List available Codex CLI rollout sessions")
@@ -209,6 +232,8 @@ def cli(argv: list[str] | None = None) -> None:
     p_cx_enrich = sub.add_parser("enrich-codex", help="Enrich trace from Codex CLI rollout session (extracts reasoning)")
     p_cx_enrich.add_argument("session_id", help="Codex session ID")
     p_cx_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_cx_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_cx_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cx_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
     p_val = sub.add_parser("validate", help="Validate session integrity")
@@ -296,12 +321,50 @@ def cli(argv: list[str] | None = None) -> None:
     p_cr_groups.add_argument("--label", default="task_type", help="Metadata label to group by")
     p_cr_health = p_cr_sub.add_parser("health", help="Show corpus milestone gaps and coverage")
     p_cr_health.add_argument("--output", "-o", help="Write report to file")
+    p_cr_phase4 = p_cr_sub.add_parser("phase4-status", help="Show Phase 4-3 trigger status for evidence refresh gating")
+    p_cr_classify = p_cr_sub.add_parser("classify-unlabeled", help="Propose lane classification for unlabeled sessions")
+    p_cr_classify.add_argument("--dry-run", action="store_true", default=True, help="Proposal only, no metadata writes (default)")
+    p_cr_classify.add_argument("--apply-confirmed", action="store_true", default=False,
+                               help="Apply high-confidence proposals to metadata sidecars")
+    p_cr_classify.add_argument("--limit", type=int, default=0, help="Limit to N sessions (0 = all)")
+    p_cr_classify.add_argument("--min-confidence", choices=["high", "medium"], default="high",
+                               help="Minimum confidence threshold for proposals (default: high)")
     p_cr_origins = p_cr_sub.add_parser("origins", help="Show corpus source-origin coverage for Phase 3C planning")
     p_cr_origins.add_argument("--output", "-o", help="Write report to file")
     p_cr_readiness = p_cr_sub.add_parser("readiness", help="Show phase-3 research readiness and blockers")
     p_cr_readiness.add_argument("--output", "-o", help="Write report to file")
     p_cr_materialize = p_cr_sub.add_parser("materialize", help="Materialize canonical metadata sidecars from annotations and runtime hints")
     p_cr_materialize.add_argument("--output", "-o", help="Write a summary report to file")
+    p_cr_compile = p_cr_sub.add_parser("compile-subsets", help="Compile CRDD comparable subset manifests")
+    p_cr_compile.add_argument("--subset", action="append", choices=sorted(SUBSET_DEFINITIONS), help="Subset to compile (repeatable; default: all)")
+    p_cr_compile.add_argument("--name", help="Manifest run name (default: timestamp)")
+    p_cr_compile.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/manifests)")
+    p_cr_compile.add_argument("--dry-run", action="store_true", help="Build manifests without writing files")
+    p_cr_compile.add_argument("--json", action="store_true", help="Print full compile result as JSON")
+    p_cr_gaps = p_cr_sub.add_parser("analyze-gaps", help="Analyze CRDD subset coverage gaps")
+    p_cr_gaps.add_argument("--subset", action="append", choices=sorted(SUBSET_DEFINITIONS), help="Subset to analyze (repeatable; default: all)")
+    p_cr_gaps.add_argument("--output", "-o", help="Write gap report JSON to file")
+    p_cr_gaps.add_argument("--json", action="store_true", help="Print full gap report as JSON")
+    p_cr_plan = p_cr_sub.add_parser("plan-experiments", help="Plan external-only CERC experiment requirements")
+    p_cr_plan.add_argument("--target", choices=sorted(SUBSET_DEFINITIONS), default="failure_enriched", help="Target subset to plan for")
+    p_cr_plan.add_argument("--required-sessions", type=int, help="Override required missing session count")
+    p_cr_plan.add_argument("--name", help="Experiment plan run name / experiment_id")
+    p_cr_plan.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/plans)")
+    p_cr_plan.add_argument("--dry-run", action="store_true", help="Build plan without writing files")
+    p_cr_plan.add_argument("--json", action="store_true", help="Print full plan result as JSON")
+    p_cr_feedback = p_cr_sub.add_parser("ingest-feedback", help="Ingest external execution feedback and normalize it")
+    p_cr_feedback.add_argument("input", help="Feedback payload JSON path")
+    p_cr_feedback.add_argument("--plan-dir", help="Experiment plan directory to link against")
+    p_cr_feedback.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_feedback.add_argument("--json", action="store_true", help="Print full feedback report as JSON")
+    p_cr_gaps_update = p_cr_sub.add_parser("update-gaps", help="Update gap projections from feedback")
+    p_cr_gaps_update.add_argument("input", help="Feedback report JSON path")
+    p_cr_gaps_update.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_gaps_update.add_argument("--json", action="store_true", help="Print gap update report as JSON")
+    p_cr_reprioritize = p_cr_sub.add_parser("reprioritize-experiments", help="Reprioritize future experiments from feedback")
+    p_cr_reprioritize.add_argument("input", help="Feedback report JSON path")
+    p_cr_reprioritize.add_argument("--output-dir", help="Output directory (default: docs/research/dataset_design/feedback)")
+    p_cr_reprioritize.add_argument("--json", action="store_true", help="Print reprioritized plan as JSON")
 
     p_cmp = sub.add_parser("compare", help="Compare two sessions side by side")
     p_cmp.add_argument("session_a", help="First session ID")
@@ -410,10 +473,8 @@ def cli(argv: list[str] | None = None) -> None:
         hdr = TimelineRenderer.session_header(events)
         print(f"OpenCode tool calls ({len(events)} events, {args.files} log files){hdr}\n")
         TimelineRenderer.print_timeline(events)
-        if args.save:
-            for ev in events:
-                store.append("opencode_latest", ev)
-            print(f"\nSaved as session: opencode_latest ({len(events)} events)")
+        if args.save or args.upsert or args.dry_run:
+            _persist_imported_events(store, "opencode_latest", events, args)
 
     elif args.command == "aider":
         _handle_aider(store, args)
@@ -484,10 +545,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-opencode-sessions":
@@ -520,10 +579,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "enrich-codex-sessions":
@@ -557,10 +614,8 @@ def cli(argv: list[str] | None = None) -> None:
             print()
             TimelineRenderer.print_timeline(events)
 
-        if args.save:
-            for ev in events:
-                store.append(args.session_id, ev)
-            print(f"\nSaved as session: {args.session_id} ({len(events)} events)")
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
     elif args.command == "stats":
@@ -819,6 +874,46 @@ def _detect_agent(events) -> str:
     return "unknown"
 
 
+def _persist_imported_events(
+    store: JSONStore,
+    session_id: str,
+    events: list[ToolEvent],
+    args: argparse.Namespace,
+) -> dict | None:
+    """Persist imported events through one CLI data path."""
+    use_upsert = bool(getattr(args, "upsert", False) or getattr(args, "dry_run", False))
+    dry_run = bool(getattr(args, "dry_run", False))
+    should_save = bool(getattr(args, "save", False) or use_upsert)
+    if not should_save:
+        return None
+
+    if use_upsert:
+        summary = store.append_missing(session_id, events, dry_run=dry_run)
+        verb = "Would upsert" if dry_run else "Upserted"
+        print(
+            f"\n{verb} session: {session_id} "
+            f"({summary['added']} added, {summary['skipped']} skipped, "
+            f"{summary['existing']} existing)"
+        )
+        summary["written"] = not dry_run and summary["added"] > 0
+        summary["mode"] = "upsert"
+        return summary
+
+    for event in events:
+        store.append(session_id, event)
+    print(f"\nSaved as session: {session_id} ({len(events)} events)")
+    return {
+        "session_id": session_id,
+        "incoming": len(events),
+        "existing": None,
+        "added": len(events),
+        "skipped": 0,
+        "dry_run": False,
+        "written": bool(events),
+        "mode": "append",
+    }
+
+
 def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
     """Handle `causetrace aider`."""
     from .hooks.aider_bridge import run_with_tracing
@@ -830,10 +925,7 @@ def _handle_aider(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"\n[causetrace] Session: {recorder.session_id} ({len(events)} events)")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append(recorder.session_id, ev)
-        print(f"\nSaved as session: {recorder.session_id} ({len(events)} events)")
+    _persist_imported_events(store, recorder.session_id, events, args)
 
 
 def _handle_continue(store: JSONStore, args: argparse.Namespace) -> None:
@@ -844,10 +936,7 @@ def _handle_continue(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"Continue.dev tool calls ({len(events)} events)\n")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append("continue_latest", ev)
-        print(f"\nSaved as session: continue_latest ({len(events)} events)")
+    _persist_imported_events(store, "continue_latest", events, args)
 
 
 def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
@@ -863,10 +952,7 @@ def _handle_codex(store: JSONStore, args: argparse.Namespace) -> None:
         if report["score"] < 0.7:
             print(f"\n  ⚠ Causal quality: {_quality_bar(report['score'])}")
             print(f"     (Codex logs lack native causality — links are heuristic)")
-    if args.save:
-        for ev in events:
-            store.append("codex_latest", ev)
-        print(f"\nSaved as session: codex_latest ({len(events)} events)")
+    _persist_imported_events(store, "codex_latest", events, args)
 
 
 def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
@@ -877,10 +963,7 @@ def _handle_copilot(store: JSONStore, args: argparse.Namespace) -> None:
         return
     print(f"Copilot tool calls ({len(events)} events, {args.max_dirs} log dirs)\n")
     TimelineRenderer.print_timeline(events)
-    if args.save:
-        for ev in events:
-            store.append("copilot_latest", ev)
-        print(f"\nSaved as session: copilot_latest ({len(events)} events)")
+    _persist_imported_events(store, "copilot_latest", events, args)
 
 
 def _print_stats(stats: dict) -> None:
@@ -1165,6 +1248,365 @@ def _print_lane_counts() -> None:
             print(f"{lane:45s} {lanes[lane]:8d} {lane_events[lane]:10d}")
 
 
+def _print_phase4_trigger_status() -> None:
+    """Print Phase 4-3 trigger status for evidence refresh gating.
+
+    Read-only. Reports all 8 triggers with current values, thresholds,
+    met/not-met status, affected candidates, and next actions.
+    """
+    import json
+    from collections import Counter
+
+    meta_dir = Path.home() / ".causetrace" / "metadata"
+    data_dir = Path.home() / ".causetrace" / "data"
+
+    # Gather corpus metrics
+    total_meta = 0
+    native_sessions = 0
+    native_strict = 0
+    sp_sessions = 0
+    sp_runtimes: set[str] = set()
+    routed_sessions = 0
+    controlled_sessions = 0
+    failure_count = 0
+    near_failure_count = 0
+    safety_annotated = 0
+    runtime_counts: Counter = Counter()       # native strict only (Trigger 7)
+    native_strict_runtimes_with_5 = 0
+    unlabeled = 0
+
+    for f in meta_dir.iterdir():
+        if not f.name.endswith(".json") or f.name.endswith(".provenance.json"):
+            continue
+        total_meta += 1
+        with open(f) as fh:
+            meta = json.load(fh)
+        ts = meta.get("task_source", "")
+        do = meta.get("data_origin", "")
+        rt = meta.get("runtime", "")
+
+        # Lane classification
+        if ts in ("superpowers_workflow_intervention",):
+            sp_sessions += 1
+            if rt:
+                sp_runtimes.add(rt)
+        elif ts == "routed_prompt_intervention":
+            routed_sessions += 1
+        elif ts == "controlled_prompt_morphology":
+            controlled_sessions += 1
+        elif ts == "real_work" or do in ("native", "real_work", "direct_prompt_native"):
+            native_sessions += 1
+            # Check for strict native (direct_prompt_native is the native baseline lane)
+            tags = meta.get("causetrace_tags", [])
+            il = meta.get("intervention_lane", "")
+            is_intervention_lane = il in ("routed_prompt_intervention",
+                                          "superpowers_workflow_intervention",
+                                          "controlled_prompt_morphology")
+            is_strict = bool(not tags and not is_intervention_lane)
+            if is_strict:
+                native_strict += 1
+                if rt:
+                    runtime_counts[rt] += 1
+            if meta.get("success") is False:
+                failure_count += 1
+            if meta.get("human_intervention") is True:
+                near_failure_count += 1
+            if meta.get("causetrace_tags") or meta.get("intervention_evidence_source"):
+                safety_annotated += 1
+        else:
+            unlabeled += 1
+
+    # Count runtimes with >=5 native strict sessions
+    for c in runtime_counts.values():
+        if c >= 5:
+            native_strict_runtimes_with_5 += 1
+
+    # Count data sessions
+    data_sessions = sum(1 for f in data_dir.iterdir() if f.name.endswith(".jsonl"))
+
+    trigger_results: list[dict] = []
+
+    # Trigger 1: Native strict growth
+    t1_current = native_strict
+    t1_threshold = 150
+    t1_met = t1_current >= t1_threshold
+    trigger_results.append({
+        "id": "1", "name": "Native strict growth",
+        "current": str(t1_current), "threshold": str(t1_threshold),
+        "met": t1_met,
+        "affected": "T-RM-001, T-RM-002, T-RM-003",
+        "action": "Re-run topology distribution against expanded native strict set."
+    })
+
+    # Trigger 2: Failure/near-failure threshold
+    t2_current = f"failure={failure_count}, near-failure={near_failure_count}"
+    t2_met = failure_count >= 10 and near_failure_count >= 10
+    trigger_results.append({
+        "id": "2", "name": "Failure/near-failure threshold",
+        "current": t2_current, "threshold": "failure>=10, near>=10",
+        "met": t2_met,
+        "affected": "T-FM-001, T-SC-004, T-SC-005",
+        "action": "Reopen Tier 2 failure/intervention validation."
+    })
+
+    # Trigger 3: Routed gate
+    t3_met = routed_sessions >= 5
+    trigger_results.append({
+        "id": "3", "name": "Routed-prompt gate",
+        "current": str(routed_sessions), "threshold": ">=5 tagged",
+        "met": t3_met,
+        "affected": "T-RP-001",
+        "action": "Open routed lane for basic characterization."
+    })
+
+    # Trigger 4: Controlled prompt expansion
+    t4_met = controlled_sessions >= 10
+    trigger_results.append({
+        "id": "4", "name": "Controlled prompt expansion",
+        "current": str(controlled_sessions), "threshold": ">=10 with variant tags",
+        "met": t4_met,
+        "affected": "T-PM-001",
+        "action": "Characterize per-variant topology."
+    })
+
+    # Trigger 5: SP lane growth
+    t5_current = f"{sp_sessions} sessions, {len(sp_runtimes)} runtimes"
+    t5_met = sp_sessions >= 15 and len(sp_runtimes) >= 2
+    trigger_results.append({
+        "id": "5", "name": "Superpowers lane growth",
+        "current": t5_current, "threshold": ">=15 sessions, >=2 runtimes",
+        "met": t5_met,
+        "affected": "T-WI-001, T-SC-003",
+        "action": "Re-run SP lane event density distribution."
+    })
+
+    # Trigger 6: Safety-control annotation
+    t6_met = safety_annotated >= 10
+    trigger_results.append({
+        "id": "6", "name": "Safety-control annotation",
+        "current": str(safety_annotated), "threshold": ">=10 annotated sessions",
+        "met": t6_met,
+        "affected": "T-SC-001 through T-SC-005",
+        "action": "First safety-control morphology baseline."
+    })
+
+    # Trigger 7: Runtime balance (native strict lane only)
+    dominant_pct = max(runtime_counts.values()) / max(sum(runtime_counts.values()), 1) * 100 if runtime_counts else 100
+    t7_current = f"top runtime={dominant_pct:.0f}%, runtimes with >=5: {native_strict_runtimes_with_5}"
+    t7_met = dominant_pct < 60 and native_strict_runtimes_with_5 >= 4
+    trigger_results.append({
+        "id": "7", "name": "Runtime balance",
+        "current": t7_current, "threshold": "<60% single runtime, >=4 runtimes with >=5 sessions",
+        "met": t7_met,
+        "affected": "T-RM-001, T-RM-002, T-RM-003",
+        "action": "Test per-runtime topology distribution."
+    })
+
+    # Trigger 8: Metadata density
+    labeled = total_meta - unlabeled
+    pct_labeled = labeled / max(total_meta, 1) * 100
+    t8_current = f"{pct_labeled:.1f}% labeled ({labeled}/{total_meta})"
+    t8_met = pct_labeled >= 40
+    trigger_results.append({
+        "id": "8", "name": "Metadata density",
+        "current": t8_current, "threshold": ">=40% labeled, >=80% lane coverage",
+        "met": t8_met,
+        "affected": "All (indirect)",
+        "action": "Re-run lane-count with reduced unlabeled population."
+    })
+
+    met_count = sum(1 for t in trigger_results if t["met"])
+
+    # Print report
+    print("Phase 4-3 Trigger Status")
+    print(f"Corpus: {total_meta} metadata sessions, {data_sessions} data sessions")
+    print(f"Phase 4: frozen (4-1/4-2 complete, 4-3 trigger-gated)")
+    print(f"Phase 5: not open")
+    print()
+    print(f"{'#':>3s}  {'Trigger':40s} {'Current':>22s}  {'Threshold':30s}  {'Met':5s}")
+    print("-" * 107)
+    for t in trigger_results:
+        flag = "  YES" if t["met"] else "  no"
+        print(f"{t['id']:>3s}  {t['name']:40s} {t['current']:>22s}  {t['threshold']:30s}  {flag:5s}")
+    print("-" * 107)
+    print(f"\nTriggers met: {met_count}/8")
+    if met_count == 0:
+        print("Phase 4-3 remains closed. No evidence refresh trigger has fired.")
+    else:
+        print("Phase 4-3 should reopen for affected candidates only.")
+    print()
+    print("Affected candidates per trigger:")
+    for t in trigger_results:
+        if t["met"]:
+            print(f"  Trigger {t['id']}: {t['affected']}")
+            print(f"    → {t['action']}")
+    print()
+    print("Next check: opportunistic — run after significant corpus growth.")
+
+
+def _print_classify_unlabeled(limit: int = 0, min_confidence: str = "high",
+                              apply_confirmed: bool = False) -> None:
+    """Propose lane classification for unlabeled metadata sessions.
+
+    Dry-run by default. --apply-confirmed writes high-confidence proposals
+    to metadata sidecars. Does not infer intervention lanes. Does not use
+    prompt length, style, tool patterns, or runtime-only rules.
+    """
+    import json
+
+    from causetrace.metadata import METADATA_DIR, merge_metadata, merge_metadata_provenance
+
+    meta_dir = Path(METADATA_DIR)
+
+    proposals: list[dict] = []
+    skipped_reasons: dict[str, int] = {}
+    total_unlabeled = 0
+    total_existing_lane = 0
+    total_scanned = 0
+
+    for f in sorted(meta_dir.iterdir()):
+        if not f.name.endswith(".json") or f.name.endswith(".provenance.json"):
+            continue
+        total_scanned += 1
+        with open(f) as fh:
+            meta = json.load(fh)
+        sid = f.stem
+        ts = meta.get("task_source", "")
+        do = meta.get("data_origin", "")
+        il = meta.get("intervention_lane", "")
+        tags = meta.get("causetrace_tags", [])
+        rt = meta.get("runtime", "")
+
+        # Already classified via explicit lane assignment
+        if ts in ("routed_prompt_intervention", "superpowers_workflow_intervention",
+                   "controlled_prompt_morphology"):
+            total_existing_lane += 1
+            continue
+        if il:
+            total_existing_lane += 1
+            continue
+
+        total_unlabeled += 1
+
+        if limit and len(proposals) >= limit:
+            continue
+
+        # Rule: external trajectory
+        if do == "external_trajectory":
+            proposals.append({
+                "session_id": sid, "proposed_lane": "external_trajectory",
+                "evidence": f"data_origin={do}", "confidence": "high",
+            })
+            continue
+
+        # Rule: controlled benchmark
+        if do == "controlled_benchmark":
+            proposals.append({
+                "session_id": sid, "proposed_lane": "controlled_prompt_morphology",
+                "evidence": f"data_origin={do}", "confidence": "high",
+            })
+            continue
+
+        # Rule: native direct prompt (high confidence)
+        # Requires: data_origin=native + task_source=real_work + no intervention markers
+        if do == "native" and ts == "real_work":
+            if tags or il:
+                skipped_reasons["has intervention markers despite native+real_work"] = \
+                    skipped_reasons.get("has intervention markers despite native+real_work", 0) + 1
+                continue
+            proposals.append({
+                "session_id": sid, "proposed_lane": "direct_prompt_native",
+                "evidence": f"data_origin={do}, task_source={ts}, no intervention markers",
+                "confidence": "high",
+            })
+            continue
+
+        # Medium confidence: data_origin=native with no task_source
+        if min_confidence == "medium" and do == "native" and not ts:
+            if tags or il:
+                skipped_reasons["native data_origin but has intervention markers"] = \
+                    skipped_reasons.get("native data_origin but has intervention markers", 0) + 1
+                continue
+            proposals.append({
+                "session_id": sid, "proposed_lane": "direct_prompt_native",
+                "evidence": f"data_origin={do}, no task_source, no intervention markers",
+                "confidence": "medium",
+            })
+            continue
+
+        # Count skip reasons
+        reason = f"no matching rule (do={do}, ts={ts or 'unset'}, rt={rt or 'unset'})"
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
+
+    # Apply confirmed writes (high-confidence only)
+    applied_count = 0
+    if apply_confirmed:
+        for p in proposals:
+            if p["confidence"] != "high":
+                continue
+            sid = p["session_id"]
+            merge_metadata(sid, {"intervention_lane": p["proposed_lane"]})
+            merge_metadata_provenance(sid, {
+                "intervention_lane": "classified_from_explicit_metadata"
+            })
+            applied_count += 1
+
+    # Print report
+    mode = "--apply-confirmed" if apply_confirmed else "--dry-run"
+    print(f"classify-unlabeled {mode}  (confidence >= {min_confidence})")
+    print(f"  Total scanned: {total_scanned}")
+    print(f"  Total unlabeled (no intervention_lane): {total_unlabeled}")
+    print(f"  Existing lane (already classified): {total_existing_lane}")
+    if apply_confirmed:
+        print(f"  Applied (written to metadata): {applied_count}")
+    print(f"  Proposed (not applied): {len(proposals) - applied_count if apply_confirmed else len(proposals)}")
+    print(f"  Skipped (unknown/no rule): {total_unlabeled - len(proposals)}")
+    print()
+    print(f"{'Confidence':12s} {'Proposed Lane':40s} {'Count':>6s}")
+    print("-" * 62)
+    from collections import Counter
+    lane_counter: Counter = Counter()
+    for p in proposals:
+        lane_counter[p["proposed_lane"]] += 1
+    for conf in ["high", "medium"]:
+        for lane in sorted(lane_counter):
+            count = sum(1 for p in proposals if p["confidence"] == conf and p["proposed_lane"] == lane)
+            if count:
+                applied_mark = " (applied)" if apply_confirmed and conf == "high" else ""
+                print(f"{conf:12s} {lane:40s} {count:>6d}{applied_mark}")
+    print()
+
+    if not apply_confirmed and proposals:
+        print("Sample proposals:")
+        for p in proposals[:10]:
+            sid_short = p["session_id"][:40]
+            print(f"  {sid_short:40s} → {p['proposed_lane']:35s} [{p['confidence']}]")
+        if len(proposals) > 10:
+            print(f"  ... and {len(proposals) - 10} more")
+        print()
+
+    if skipped_reasons:
+        print("Top skip reasons:")
+        for reason, count in sorted(skipped_reasons.items(), key=lambda x: -x[1])[:5]:
+            print(f"  [{count:>4d}] {reason[:80]}")
+        print()
+
+    if not apply_confirmed:
+        print("No metadata written. Use --apply-confirmed to apply high-confidence proposals.")
+        return
+
+    # After-apply summary
+    unlabeled_after = total_unlabeled - applied_count
+    classified_after = total_existing_lane + applied_count
+    coverage_before = (total_existing_lane / total_scanned * 100) if total_scanned else 0
+    coverage_after = (classified_after / total_scanned * 100) if total_scanned else 0
+    print(f"Before: {total_existing_lane}/{total_scanned} classified ({coverage_before:.1f}%)")
+    print(f"After:  {classified_after}/{total_scanned} classified ({coverage_after:.1f}%)")
+    print(f"Unlabeled remaining: {unlabeled_after}")
+    print()
+    print("Applied entries have provenance: intervention_lane=classified_from_explicit_metadata")
+
+
 def _print_gate_status() -> None:
     """Print Phase 3E parser detection gate readiness table."""
     import json
@@ -1252,6 +1694,14 @@ def _handle_corpus(store, args) -> None:
             print(report)
         return
 
+    if args.corpus_command == "phase4-status":
+        _print_phase4_trigger_status()
+        return
+
+    if args.corpus_command == "classify-unlabeled":
+        _print_classify_unlabeled(args.limit, args.min_confidence, args.apply_confirmed)
+        return
+
     if args.corpus_command == "origins":
         report = generate_corpus_origin_report(store)
         if args.output:
@@ -1293,6 +1743,137 @@ def _handle_corpus(store, args) -> None:
             print(f"Metadata materialization report written: {args.output}")
         else:
             print(report)
+        return
+
+    if args.corpus_command == "compile-subsets":
+        result = compile_subsets(
+            store,
+            subset_ids=args.subset,
+            output_dir=args.output_dir,
+            name=args.name,
+            write=not args.dry_run,
+        )
+        if args.json:
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return
+        action = "Compiled" if result["written"] else "Dry-run compiled"
+        print(f"{action} CRDD subsets from {result['source_session_count']} session(s)")
+        print(f"Output: {result['output_dir']}")
+        for manifest in result["manifests"]:
+            score = manifest["comparability"]["score"]
+            print(
+                f"  {manifest['subset_id']}: "
+                f"{manifest['selected_count']} selected, "
+                f"{manifest['excluded_count']} excluded, "
+                f"score={score}"
+            )
+        return
+
+    if args.corpus_command == "analyze-gaps":
+        report = analyze_gaps(store, subset_ids=args.subset, output=args.output)
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        if args.output:
+            print(f"Gap report written: {args.output}")
+        print(f"CERC gap report from {report['source_session_count']} session(s)")
+        for gap in report["subset_gaps"]:
+            print(
+                f"  {gap['subset_id']}: "
+                f"{gap['current_sessions']}/{gap['target_sessions']} "
+                f"(missing {gap['missing_sessions']}, "
+                f"severity={gap['severity']}, "
+                f"score={gap['comparability_score']})"
+            )
+        return
+
+    if args.corpus_command == "plan-experiments":
+        result = plan_experiments(
+            store,
+            target_subset=args.target,
+            required_sessions=args.required_sessions,
+            output_dir=args.output_dir,
+            name=args.name,
+            write=not args.dry_run,
+        )
+        if args.json:
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return
+        plan = result["plan"]
+        queue = plan["experiment_queue"]
+        gap = plan["gap"]
+        action = "Planned" if result["written"] else "Dry-run planned"
+        print(f"{action} CERC experiment: {queue['experiment_id']}")
+        print(f"Output: {result['output_dir']}")
+        print(f"Target subset: {queue['target_subset']}")
+        print(f"Current/target: {gap['current_sessions']}/{gap['target_sessions']}")
+        print(f"Required sessions: {queue['required_sessions']}")
+        print(f"Execution mode: {queue['execution_mode']}")
+        print(f"Must not execute: {queue['must_not_execute']}")
+        print(f"Evidence status: {queue['evidence_status']}")
+        print(f"Queue validation: {queue['validation']['ok']}")
+        return
+
+    if args.corpus_command == "ingest-feedback":
+        report = ingest_feedback(
+            store,
+            input_path=args.input,
+            plan_dir=args.plan_dir,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Feedback report: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Observed/resolved: {report['observed_count']}/{report['resolved_count']}")
+        print(f"  Resolved ratio: {report['quality']['resolved_ratio']}")
+        print(f"  External only: {report['constraints']['external_only']}")
+        return
+
+    if args.corpus_command == "update-gaps":
+        feedback_report = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        report = update_gaps(
+            store,
+            feedback_report=feedback_report,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Gap update: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Remaining sessions: {report['remaining_sessions']}")
+        print(f"  Status: {report['status']}")
+        print(f"  Priority hint: {report['priority_hint']}")
+        return
+
+    if args.corpus_command == "reprioritize-experiments":
+        feedback_report = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        report = reprioritize_experiments(
+            store,
+            feedback_report=feedback_report,
+            output_dir=args.output_dir,
+            write=True,
+        )
+        if args.json:
+            json.dump(report, sys.stdout, indent=2)
+            print()
+            return
+        print(f"Reprioritized plan: {report['output_dir']}")
+        print(f"  Experiment: {report['experiment_id']}")
+        print(f"  Target subset: {report['target_subset']}")
+        print(f"  Remaining sessions: {report['feedback_summary']['remaining_sessions']}")
+        print(f"  Top priority: {report['priorities'][0]['subset_id'] if report['priorities'] else 'none'}")
         return
 
     if args.corpus_command == "verify":

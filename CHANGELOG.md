@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-06-23
+
+- Add the AI Behavior Science OS v0.3 stack: descriptor-only BDE, read-only CRDD subset compilation, and external-only CERC experiment planning.
+- Add feedback integration for external execution results with gap updates and experiment reprioritization.
+- Add stable dedup/upsert import entry points and metadata extensions for behavior-distribution tracking.
+- Update research documentation and regression coverage for the corpus design workflow.
+
 ## 0.2.5 - 2026-05-29
 
 - Harden corpus reporting with field-level metadata provenance and missing-field audits.

@@ -159,6 +159,8 @@ These claims cannot be evaluated against the current corpus. They are deferred, 
 
 ## 5. Theory Boundaries
 
+Visible trace length and natural-language rationale density should not be treated as complete proxies for reasoning depth. Future agents may shift reasoning or coordination into compressed or opaque communication channels. Prompt-level compression and structured `machine_state` remain observable text artifacts, while true hidden-state, embedding, or KV-cache transfer would require separate instrumentation. `causetrace` therefore interprets topology as observable runtime morphology, not full internal cognition.
+
 This draft explicitly does NOT support:
 
 | Exclusion | Rationale |
