@@ -74,32 +74,63 @@ fan-in nodes, 0 reproduced by the heuristics).
 
 | Session | child nodes fully agreeing | missed native parent-edges | spurious parent-edges | multi-parent children: native / inferred / exactly reproduced |
 |---------|---------------------------|----------------------------|-----------------------|---------------------------------------------------------------|
-| design-oa | 76% | 17% | 19% | 22 / 55 / **0** |
-| memory-plugin debug | 62% | 33% | 28% | 46 / 24 / **0** |
-| backup-762a | 70% | 26% | 25% | 10 / 0 / **0** |
-| backup-df4c | 88% | 10% | 10% | 1 / 0 / **0** |
+| design-oa | 76% | 17% | 24% | 22 / 55 / **0** |
+| memory-plugin debug | 62% | 32% | 34% | 56 / 38 / **0** |
+| backup-762a | 47% | 52% | 54% | 10 / 37 / **0** |
+| backup-df4c | 50% | 46% | 51% | 1 / 219 / **0** |
+
+(Re-measured after parser v2 exposed the nested `run_code` layer below — the
+code-preset rows fell from 70%/88% to 47%/50% agreement: the deeper ground
+truth gets, the less the heuristics can fake agreement.)
 
 Three findings:
 
 0. **Corpus-wide replication.** The measurement was later batched across all
-   48 main-corpus DSH sessions with ≥150 events: **0 of 724 true fan-in nodes
-   exactly reproduced** (the four-session table above was not cherry-picked),
-   mean child agreement 70.1%, and correlation between fan-in density and
-   agreement is −0.39 — parallelism reliably predicts where the heuristics
-   break. Sessions with 15 native fan-ins sit at ~59% agreement; the only
-   measured session with zero fan-ins hits 87.5%.
+   48 main-corpus DSH sessions with ≥150 events (v1 parser graphs): **0 of 724
+   true fan-in nodes exactly reproduced** (the four-session table above was
+   not cherry-picked), mean child agreement 70.1%, and correlation between
+   fan-in density and agreement is −0.39 — parallelism reliably predicts where
+   the heuristics break. Sessions with 15 native fan-ins sit at ~59%
+   agreement; the only measured session with zero fan-ins hits 87.5%.
 
-1. Temporal inference disagrees with reality on **12–38% of child nodes**,
+1. Temporal inference disagrees with reality on **24–53% of child nodes**,
    splitting between missing and fabricated parents.
-2. It reproduced **0 of 79** true multi-parent (fan-in) nodes exactly. Where it
-   invented fan-in at all (design-oa: 55 claimed vs 22 real) it grouped the
-   wrong joint causes; where true fan-in was denser (memory-plugin debug) it
-   halved the count. Heuristics do not just miss parallelism — they emit
-   structurally wrong parallelism.
-3. Agreement correlates with serialness: the most sequential session
-   (backup-df4c, one fan-in) scored best; the most parallel (memory-plugin
-   debug) scored worst. Heuristic fidelity is inversely proportional to the
-   exact structure that makes causality worth recording.
+2. It reproduced **0 of 89** true multi-parent (fan-in) nodes exactly. Where it
+   invented fan-in (design-oa: 55 claimed vs 22 real; backup-df4c: 219 claimed
+   against 1 real — it fans-in at almost every step boundary once nested
+   events exist) it grouped the wrong joint causes. Heuristics do not just
+   miss parallelism — they emit structurally wrong parallelism.
+3. Agreement tracks how *flat* the ground truth is: sessions whose real work
+   hides in nested `run_code` dispatches (762a, df4c) score worst once that
+   layer is extracted, while their pre-v2 shallow graphs "agreed" at 70–88%.
+   Heuristic fidelity is inversely proportional to the depth and parallelism
+   of the true structure — measured on the graph the heuristics can even see.
+
+## v2: the hidden second layer of the DAG
+
+A full-corpus scan (577 sessions, ~1.6 M records) surfaced three channels the
+first parser pass deliberately skipped:
+
+1. **`run_code` dispatches real nested tool calls** — 56 048
+   `tool/code-dispatch-start`/`-dispatch` pairs with hierarchical callIds
+   (`<callId>:code:N`). Extracting them (parser v2) grows code-preset
+   sessions by 53–66%: 762a goes 3315 → 5071 events (2106 inner calls under
+   1233 `run_code` nodes, median inner duration 187 ms, real `isError`
+   flags); df4c 2638 → 4377. The DAG is now two levels deep wherever
+   `run_code` runs. A side effect is instructive: measured fidelity against
+   temporal heuristics *dropped* when the graph got deeper (df4c 88% → 50%
+   child agreement) — shallow graphs only looked predictable.
+2. **Mid-turn steering** (`agent/inbox/spliced`, `target:"next-step"`) is
+   re-logged as ordinary `user/message`; correlating by message id/rpcId
+   lets the parser mark `tool_input["mid_turn"]`. design-oa turns out to be
+   **44 mid-turn interventions out of 137 "roots"** — the tools-per-turn
+   figures below under-count real human steering; the "autonomous" session
+   still takes 14 interventions across 60 turns.
+3. **No cross-session edges exist to extract.** Zero `parentSessionId` in
+   all 577 headers; only 4 visible `subagent` tool calls against 402
+   `delegationDepth=1` sessions — sub-agents are mostly spawned out-of-band
+   (495 of 508 backup sessions run the `habits` preset). Pressure #005's
+   delegation gap is a runtime-side missing link, not a causetrace one.
 
 ## Behavioural signatures (patterns)
 

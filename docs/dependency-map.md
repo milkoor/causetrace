@@ -183,7 +183,7 @@ carries runtime-native parent links (see `causetrace fidelity`).
 ### `hooks/dsh_parser.py`
 - **Depends on:** `core.ToolEvent`; optional `zstandard` (falls back to `zstd` CLI) for `.jsonl.zstd` session logs
 - **Used by:** `cli.py` → `enrich-dsh`, `enrich-dsh-sessions`, `doctor`
-- **Note:** consumes DSH's native `turn`/`step`/`callId` metadata — no heuristic chaining; parallel-call fan-out and multi-parent fan-in are first-class
+- **Note:** consumes DSH's native `turn`/`step`/`callId` metadata — no heuristic chaining; parallel-call fan-out and multi-parent fan-in are first-class. v2 adds nested `run_code` inner dispatches (`tool/code-dispatch*` pairs, hierarchical `subCallId`) and `mid_turn` marking of `next-step` inbox splices
 
 ### `hooks/opencode_tailer.py` (legacy)
 - **Depends on:** `core.ToolEvent`, `core.TraceRecorder`, `causality.infer_relations`

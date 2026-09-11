@@ -106,7 +106,7 @@ $ causetrace graph ses_3e23bcc8
 | **Codex CLI** | Rollout 解析 | 解析 `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` 通过 `call_id` 配对 |
 | **Hermes Agent** | state.db 解析 | 解析 `~/.hermes/state.db` SQLite — OpenAI 格式消息、reasoning 列、结果按 `tool_call_id` 回填到调用 |
 | **GitHub Copilot** | 日志监听 | 解析 `~/.config/Code/logs/` 中 Copilot 扩展的 host 日志 |
-| **DeepSeek Harness** | 会话日志解析 | 解析 `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — 原生 `turn`/`step`/`callId` 元数据直接给出并行调用的扇出与联合结果的扇入（多父 DAG），tool 结果携带实测耗时 |
+| **DeepSeek Harness** | 会话日志解析 | 解析 `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — 原生 `turn`/`step`/`callId` 元数据直接给出并行调用的扇出与联合结果的扇入（多父 DAG），tool 结果携带实测耗时；`run_code` 内部工具分发按层级 `subCallId` 提取为嵌套 DAG 层 |
 
 ```bash
 # Claude Code — Hook 自动记录

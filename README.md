@@ -109,7 +109,7 @@ Fan-in DAGs visualize convergent causation — one tool consuming multiple prior
 | **Codex CLI** | Rollout parser | Parses `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` paired by `call_id` |
 | **Hermes Agent** | state.db parser | Parses `~/.hermes/state.db` SQLite — OpenAI-format messages, reasoning column, results merged into calls by `tool_call_id` |
 | **GitHub Copilot** | Log tailing | Parses `~/.config/Code/logs/` extension host logs for Copilot tool calls |
-| **DeepSeek Harness** | Session log parser | Parses `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — native `turn`/`step`/`callId` metadata yields exact fan-out (parallel calls per step) and multi-parent fan-in (joint results cause the next step) |
+| **DeepSeek Harness** | Session log parser | Parses `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — native `turn`/`step`/`callId` metadata yields exact fan-out (parallel calls per step) and multi-parent fan-in (joint results cause the next step); inner `run_code` tool dispatches become a nested DAG level via hierarchical `subCallId` records |
 
 ```bash
 # Claude Code — automatic via hooks
@@ -150,7 +150,7 @@ Usage notes:
 - **Codex CLI (enrich)** — parses real rollout format: `function_call`/`function_call_output` paired by `call_id`, `agent_message` for reasoning
 - **Hermes Agent (enrich)** — reads `sessions`/`messages` from `~/.hermes/state.db`; reasoning column and OpenAI `tool_calls` extracted, `role='tool'` outputs merged into their call by `tool_call_id`
 - **OpenCode (enrich)** — extracts reasoning + tool calls from SQLite DB with causal parent-child links
-- **DeepSeek Harness (enrich)** — consumes persisted `turn`/`step`/`callId` records directly: no heuristic chaining, parallel tool calls fan-out from one reasoning event and fan-in on the next step via comma-separated parents; tool results carry measured `duration_ms`
+- **DeepSeek Harness (enrich)** — consumes persisted `turn`/`step`/`callId` records directly: no heuristic chaining, parallel tool calls fan-out from one reasoning event and fan-in on the next step via comma-separated parents; tool results carry measured `duration_ms`. Nested `run_code` dispatches and mid-turn steering splices are first-class too (Pressure #006)
 - **Continue.dev**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
 - **Codex CLI (`codex`)** — legacy scanner retained for compatibility; use `enrich-codex` for validated rollout ingestion
 - All log-based agents infer causality heuristically — timestamps between events determine parent→child chains

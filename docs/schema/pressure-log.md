@@ -220,3 +220,49 @@ No schema change yet. Options parked: split `duration_ms` into
 cross-session edges, and an error flag. Revisit when a second runtime with
 measured timing (or a delegation-aware consumer) shows up — per semantic
 restraint, one runtime is not enough evidence to promote new fields.
+
+## Pressure #006
+
+**Date**: 2026-09-11
+**Agent**: DeepSeek Harness (full-corpus scan: 577 sessions, ~1.6 M records)
+**Context**: follow-up census after Pressure #005; two channels were found in
+the logs and are now extracted or explicitly discarded.
+
+### Problem
+
+1. **Mid-turn steering is not a turn, but the schema calls it one.** DSH
+   splices user messages with `target:"next-step"` (861 splices corpus-wide;
+   32–37% of "roots" in interactive sessions like design-oa's 137). These
+   re-land as `user/message` records indistinguishable from genuine turn
+   starts. The parser now correlates `agent/inbox/spliced` by message
+   id/rpcId and marks `tool_input["mid_turn"] = true`, but `user_input`
+   itself has no intervention vs turn-root distinction, so `stats` turn
+   metrics (tools/turn, roots) still mix the two semantics.
+2. **Nested dispatch depth was invisible until now.** `run_code` logs every
+   inner tool call as `tool/code-dispatch-start` / `tool/code-dispatch` with
+   hierarchical `subCallId` (`<parent>:code:N`) — 56 048 pairs corpus-wide.
+   Extracting them (parser v2) grows code-preset sessions by 53–66%
+   (762a: 3315 → 5071 events) and exposes a genuine second DAG level. The
+   pressure: fidelity measurement drops where structure got deeper
+   (df4c: 88% → 50% child agreement) — shallower graphs only *looked* more
+   predictable. Metrics that compare across parser versions must pin the
+   extraction depth.
+3. **Model-failure channel has no home.** 1068 `llm/retry` records carry
+   `{turn, step, provider, failure.code ∈ TIMEOUT/RATE_LIMIT/TRANSPORT/SERVER,
+   retry/maxRetries, delayMs}` — a per-step reliability signal with exact
+   causal attribution. Today it is discarded (no event_type fits;
+   `context_update` would drown it among slash commands).
+
+### What held up
+
+- The `tool/call → tool/result` merge pattern ported 1:1 to the nested
+  dispatch pairs — same convention, real durations (median 187 ms).
+- Orphan dispatch records (parent call never observed) are skipped, not
+  fabricated — fidelity-over-coverage held even when it lost events.
+
+### Action
+
+Parser v2 ships the nested layer + `mid_turn` marker (data stays inside
+approved fields; no schema change). Keep #1 (turn-semantics split) and #3
+(retry/failure event or metadata convention) open for the next runtime with
+structured retries or in-flight steering.
