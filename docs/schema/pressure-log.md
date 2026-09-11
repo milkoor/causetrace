@@ -175,3 +175,48 @@ earlier fragment or external root. Treating that ID as a local graph node made
 No schema change. Stored references retain provenance, while analysis now
 builds edges only from IDs present in the loaded session. Boundary children
 are local roots; missing non-`root_` references remain validation warnings.
+
+---
+
+## Pressure #005
+
+**Date**: 2026-09-11
+**Agent**: DeepSeek Harness (session log parser)
+**Sessions**: 4 real sessions, 945–3315 events (see `docs/case-studies/dsh-native-causality.md`)
+
+### Problem
+
+DSH is the first runtime that persists real timing and real fan-out/fan-in,
+and it strains three schema edges:
+
+1. **`duration_ms` = dispatch→resolution, not execution.** Derived from the
+   `tool/call` → `tool/result` record gap. Background/parked calls resolve
+   after session idle: medians land at 0.1–1.4 s, but one `run_code` call
+   measures ~1023 h wall-clock. Downstream duration stats silently mix busy
+   time with process downtime.
+2. **Cross-session delegation is inexpressible.** DSH spawns sub-agents as
+   separate session files (`delegationDepth` in the header). A parent's
+   `subagent` tool call and the child session's root event cannot be linked:
+   `parent_event_id` is scoped per session and there is no event-id namespace
+   or `external_ref` field.
+3. **Tool errors have no home.** `tool/result` carries `isError`; today it is
+   smuggled into `tool_output` as a text marker. A first-class boolean/enum
+   (or `metadata["is_error"]`) would let `stats`/`patterns` separate retry
+   loops from genuine iteration (connects to Pressure #003's repetition note).
+
+### What the schema got right
+
+- Comma-separated multi-parent `parent_event_id` handled 6-parent fan-in
+  natively — first real (non-fixture) fan-in workload, no mutation needed.
+- `event_type` (`user_input`, `context_update`) and `caused_by` mapped DSH's
+  turn roots and slash commands without new types.
+- Append-only JSONL survived sessions whose zstd stream was mid-write
+  (partial tail skipped as malformed line by the parser).
+
+### Action
+
+No schema change yet. Options parked: split `duration_ms` into
+`run_ms`/`wait_ms` (or define semantics), an `external_ref`-style field for
+cross-session edges, and an error flag. Revisit when a second runtime with
+measured timing (or a delegation-aware consumer) shows up — per semantic
+restraint, one runtime is not enough evidence to promote new fields.

@@ -21,9 +21,11 @@ Zero intra-project dependencies. Foundation layer.
 | `hooks/claude_code.py` | `TraceRecorder` |
 | `hooks/claude_project_parser.py` | `ToolEvent` |
 | `hooks/codex_parser.py` | `ToolEvent` |
+| `hooks/hermes_parser.py` | `ToolEvent` |
 | `hooks/codex_tailer.py` | `ToolEvent`, `TraceRecorder` |
 | `hooks/continue_tailer.py` | `ToolEvent`, `TraceRecorder` |
 | `hooks/copilot_tailer.py` | `ToolEvent`, `TraceRecorder` |
+| `hooks/dsh_parser.py` | `ToolEvent` |
 | `hooks/opencode_parser.py` | `ToolEvent` |
 | `hooks/opencode_tailer.py` | `ToolEvent`, `TraceRecorder` |
 | `demo/run_demo.py` | `TraceRecorder` |
@@ -127,7 +129,7 @@ Zero intra-project dependencies beyond analysis, metadata, and corpus helpers.
 
 **Exports:** `infer_relations`, `build_causal_graph`
 
-**Consumed by:** legacy tailers only
+**Consumed by:** legacy tailers + fidelity measurement
 
 | Consumer | What it uses |
 |----------|-------------|
@@ -135,6 +137,22 @@ Zero intra-project dependencies beyond analysis, metadata, and corpus helpers.
 | `hooks/continue_tailer.py` | `infer_relations` |
 | `hooks/copilot_tailer.py` | `infer_relations` |
 | `hooks/opencode_tailer.py` | `infer_relations` |
+| `fidelity.py` | `infer_relations` (re-run against native ground truth) |
+
+## Layer 2.5: Fidelity (`causetrace/fidelity.py`)
+
+**Exports:** `measure_fidelity`, `has_native_ground_truth`
+
+**Depends on:** `core.ToolEvent`, `core._parse_parents`, `causality.infer_relations`
+
+**Used by:** `cli.py` → `fidelity`
+
+| Consumer | What it uses |
+|----------|-------------|
+| `cli.py` | `measure_fidelity` |
+
+Clone-and-compare keeps ground truth intact; only meaningful when the session
+carries runtime-native parent links (see `causetrace fidelity`).
 
 ## Layer 3: Hooks & Parsers
 
@@ -156,6 +174,16 @@ Zero intra-project dependencies beyond analysis, metadata, and corpus helpers.
 ### `hooks/codex_parser.py`
 - **Depends on:** `core.ToolEvent`
 - **Used by:** `cli.py` → `enrich-codex`, `enrich-codex-sessions`
+
+### `hooks/hermes_parser.py`
+- **Depends on:** `core.ToolEvent`; stdlib `sqlite3` (Hermes state.db)
+- **Used by:** `cli.py` → `enrich-hermes`, `enrich-hermes-sessions`
+- **Tested by:** `tests/test_hermes_parser.py`
+
+### `hooks/dsh_parser.py`
+- **Depends on:** `core.ToolEvent`; optional `zstandard` (falls back to `zstd` CLI) for `.jsonl.zstd` session logs
+- **Used by:** `cli.py` → `enrich-dsh`, `enrich-dsh-sessions`, `doctor`
+- **Note:** consumes DSH's native `turn`/`step`/`callId` metadata — no heuristic chaining; parallel-call fan-out and multi-parent fan-in are first-class
 
 ### `hooks/opencode_tailer.py` (legacy)
 - **Depends on:** `core.ToolEvent`, `core.TraceRecorder`, `causality.infer_relations`
@@ -206,11 +234,16 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `enrich-opencode-sessions` | `list_opencode_sessions()` | hooks/opencode_parser |
 | `enrich-codex` | `enrich_codex_session()` | hooks/codex_parser |
 | `enrich-codex-sessions` | `list_codex_sessions()` | hooks/codex_parser |
+| `enrich-hermes` | `enrich_hermes_session()` | hooks/hermes_parser |
+| `enrich-hermes-sessions` | `list_hermes_sessions()` | hooks/hermes_parser |
+| `enrich-dsh` | `enrich_dsh_session()` | hooks/dsh_parser |
+| `enrich-dsh-sessions` | `list_dsh_sessions()` | hooks/dsh_parser |
 | `validate` | inline (uses `validate_session` from core) | core |
 | `validate --all` | inline (uses `list_sessions`, `validate_session`) | core |
 | `stats` | inline (uses `compute_stats`) | analysis |
 | `roots` | inline (uses `find_roots`) | analysis |
 | `critical-path` | inline (uses `longest_path`) | analysis |
+| `fidelity` | `measure_fidelity()` | fidelity (+ causality, core) |
 | `patterns` | inline (uses pattern detectors; JSON/CSV output) | analysis |
 | `annotate` | `_handle_annotate()` | annotation |
 | `metadata` | `_handle_metadata()` | metadata |
@@ -254,7 +287,8 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 
 ```
 core.py change          → EVERYTHING (all hooks, CLI, tests)
-causality.py change     → all 4 legacy tailers
+causality.py change     → all 4 legacy tailers + fidelity.py
+fidelity.py change      → fidelity command + DAG fidelity tests
 analysis.py change      → stats/roots/critical-path/patterns/compare + DAG tests
 annotation.py change    → annotate/compare commands
 metadata.py change      → metadata/report/corpus commands
@@ -280,8 +314,10 @@ __init__.py change      → external consumers (pip installers)
 
 ### When modifying `causality.py`:
 
-1. Run all 4 tailers that use `infer_relations`
-2. Verify `test_invariants.py` still passes
+1. Run all 4 tailers that use `infer_relations`, plus `causetrace fidelity`
+   on a DSH session (fidelity re-runs the heuristics and asserts metrics)
+2. Verify `test_invariants.py` and the fidelity tests in
+   `test_dag_fixtures.py` still pass
 
 ### When modifying `analysis.py`:
 

@@ -8,10 +8,10 @@
 
 **causetrace** 是面向 AI coding agents 的 Python tracing 与
 observability 工具，支持 Claude Code、Codex CLI、OpenCode、Aider、
-Continue.dev 和 GitHub Copilot。它捕获工具调用并链接成因果树与 DAG，
+Continue.dev、GitHub Copilot、Hermes Agent 和 DeepSeek Harness。它捕获工具调用并链接成因果树与 DAG，
 用于 agent 调试、回放、根因分析和行为解释，而非仅展示扁平时序线。
 
-> **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / GitHub Copilot（日志监听）、Codex CLI（rollout 解析）、Aider（进程包装）
+> **数据源**: Claude Code（hooks）、OpenCode / Continue.dev / GitHub Copilot（日志监听）、Codex CLI（rollout 解析）、Hermes Agent（state.db 解析）、DeepSeek Harness（会话日志解析）、Aider（进程包装）
 > **存储**: `~/.causetrace/data/<session_id>.jsonl` — 追加写入 JSONL，零外部依赖
 
 ---
@@ -104,7 +104,9 @@ $ causetrace graph ses_3e23bcc8
 | **Aider** | 进程包装 | 以子进程运行 `aider`，从 stdout 解析工具调用 |
 | **Continue.dev** | 日志监听 | 解析 `~/.continue/logs/core.log` 中的 JSON 工具调用条目 |
 | **Codex CLI** | Rollout 解析 | 解析 `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` 通过 `call_id` 配对 |
+| **Hermes Agent** | state.db 解析 | 解析 `~/.hermes/state.db` SQLite — OpenAI 格式消息、reasoning 列、结果按 `tool_call_id` 回填到调用 |
 | **GitHub Copilot** | 日志监听 | 解析 `~/.config/Code/logs/` 中 Copilot 扩展的 host 日志 |
+| **DeepSeek Harness** | 会话日志解析 | 解析 `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — 原生 `turn`/`step`/`callId` 元数据直接给出并行调用的扇出与联合结果的扇入（多父 DAG），tool 结果携带实测耗时 |
 
 ```bash
 # Claude Code — Hook 自动记录
@@ -122,6 +124,14 @@ causetrace enrich-opencode <session_id> --save
 causetrace enrich-codex-sessions
 causetrace enrich-codex <session_id> --save
 
+# Hermes Agent — 从 SQLite state.db 会话提取
+causetrace enrich-hermes-sessions
+causetrace enrich-hermes <session_id> --save
+
+# DeepSeek Harness — 从会话日志提取原生因果结构
+causetrace enrich-dsh-sessions
+causetrace enrich-dsh <session_id> --save
+
 # 基于日志的 Agent — 扫描并保存（启发式因果推断）
 causetrace opencode --save
 causetrace continue --save
@@ -136,7 +146,9 @@ causetrace aider -- --model gpt-4 --yes "修复这个bug"
 - **Claude Code** — 精度最高，通过 Pre/Post hooks 捕获完整因果关系
 - **Aider** — `causetrace aider --save -- [aider 参数]` 包装 CLI；从输出尽力解析
 - **Codex CLI (enrich)** — 解析真实 rollout 格式：`function_call`/`function_call_output` 通过 `call_id` 配对
+- **Hermes Agent (enrich)** — 从 `~/.hermes/state.db` 读取 `sessions`/`messages`；提取 reasoning 列与 OpenAI `tool_calls`，`role='tool'` 输出按 `tool_call_id` 合并进对应调用
 - **OpenCode (enrich)** — 从 SQLite DB 提取 reasoning + 工具调用，带因果父子链接
+- **DeepSeek Harness (enrich)** — 直接使用持久化的 `turn`/`step`/`callId` 记录：无启发式推断；同一步的并行调用从同一 reasoning 事件扇出，下一步对全部结果以逗号多父扇入；耗时为 call→result 实测值
 - **Continue.dev**、**Copilot** — 事后扫描日志；通过 `infer_relations()` 从时间邻近性推断因果关系
 - **Codex CLI (`codex`)** — 为兼容保留的旧扫描路径；已验证的 rollout 导入请使用 `enrich-codex`
 - 所有基于日志的 Agent 采用启发式因果推断 —— 事件间的时间戳决定父子链
@@ -182,6 +194,7 @@ causetrace validate <session_id>                 # 完整性与损坏 JSONL 校�
 causetrace stats <session_id>                    # 拓扑汇总
 causetrace roots <session_id>                    # 局部根节点与下游深度
 causetrace critical-path <session_id>            # 最长局部因果链
+causetrace fidelity <session_id>                 # 原生链接与时间戳推断的一致度
 causetrace patterns <session_id> --json          # 结构化模式输出
 causetrace patterns <session_id> --csv           # 转移关系 CSV
 causetrace annotate <session_id> --task-type bug_fix --success
@@ -208,6 +221,7 @@ causetrace compare <session_a> <session_b>
 ### 已验证案例
 
 - [Codex CLI rollout 解析案例](docs/case-studies/codex-rollout-parser.md)
+- [DSH 原生因果结构案例](docs/case-studies/dsh-native-causality.md)
 - [Claude Code hook 因果链失效观察](examples/traces/failures/observations-claude-code-hooks.md)
 - [运行时研究笔记](docs/research-notes/README.md)
 - [研究索引](docs/research/README.md)
@@ -251,6 +265,10 @@ causetrace compare <session_a> <session_b>
 | `causetrace enrich-opencode <id> [--save]` | 从 OpenCode DB 会话提取 |
 | `causetrace enrich-codex-sessions` | 列出 Codex CLI rollout 会话 |
 | `causetrace enrich-codex <id> [--save]` | 从 Codex CLI rollout 提取 |
+| `causetrace enrich-hermes-sessions` | 列出 Hermes Agent 会话（state.db） |
+| `causetrace enrich-hermes <id> [--save]` | 从 Hermes Agent SQLite 会话提取 |
+| `causetrace enrich-dsh-sessions` | 列出 DeepSeek Harness 会话（可用 `--dsh-home` 指向备份目录） |
+| `causetrace enrich-dsh <id> [--save]` | 从 DSH 会话日志提取（原生因果结构） |
 | `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
 | `causetrace aider [--save] -- [args]` | 带追踪运行 Aider |
 | `causetrace continue [--save]` | 扫描 Continue.dev 日志 |
@@ -260,6 +278,7 @@ causetrace compare <session_a> <session_b>
 | `causetrace stats [<id>]` | 展示拓扑统计 |
 | `causetrace roots [<id>]` | 展示局部根节点及下游指标 |
 | `causetrace critical-path [<id>]` | 展示最长局部因果链 |
+| `causetrace fidelity [<id>] [--json]` | 对比原生因果链接与时间戳推断（仅对有原生链的 runtime 有意义） |
 | `causetrace patterns [<id>] [--json\|--csv]` | 分析因果路径和转移；CSV 输出转移表 |
 | `causetrace annotate <id> [...]` | 保存任务/来源/结果侧车元数据 |
 | `causetrace metadata <id>` | 查看标准化运行时元数据侧车 |
@@ -326,6 +345,8 @@ causetrace compare <session_a> <session_b>
 | `causetrace/hooks/claude_project_parser.py` | Claude Code project 会话解析器 |
 | `causetrace/hooks/opencode_parser.py` | OpenCode SQLite DB 会话解析器 |
 | `causetrace/hooks/codex_parser.py` | Codex CLI rollout JSONL 解析器 |
+| `causetrace/hooks/hermes_parser.py` | Hermes Agent SQLite state.db 解析器 |
+| `causetrace/hooks/dsh_parser.py` | DeepSeek Harness 会话日志解析器（zstd JSONL，原生因果） |
 | `causetrace/hooks/opencode_tailer.py` | OpenCode 日志监听 |
 | `causetrace/hooks/aider_bridge.py` | Aider 子进程包装 |
 | `causetrace/hooks/continue_tailer.py` | Continue.dev 日志监听 |

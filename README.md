@@ -9,12 +9,12 @@
 
 
 **causetrace** is a Python tracing and observability tool for AI coding agents
-such as Claude Code, Codex CLI, OpenCode, Aider, Continue.dev, and GitHub
-Copilot. It captures tool calls and links them into causal trees and DAGs,
-enabling agent debugging, replay, root-cause analysis, and behavior
-explanation instead of relying on flat timelines.
+such as Claude Code, Codex CLI, OpenCode, Aider, Continue.dev, GitHub
+Copilot, Hermes Agent, and DeepSeek Harness. It captures tool calls and links them into
+causal trees and DAGs, enabling agent debugging, replay, root-cause analysis,
+and behavior explanation instead of relying on flat timelines.
 
-> **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / GitHub Copilot (log tailing), Codex CLI (rollout parser), Aider (process wrapper)
+> **Data sources**: Claude Code (hooks), OpenCode / Continue.dev / GitHub Copilot (log tailing), Codex CLI (rollout parser), Hermes Agent (state.db parser), DeepSeek Harness (session log parser), Aider (process wrapper)
 > **Storage**: `~/.causetrace/data/<session_id>.jsonl` — append-only JSONL, zero external dependencies
 
 ---
@@ -107,7 +107,9 @@ Fan-in DAGs visualize convergent causation — one tool consuming multiple prior
 | **Aider** | Process wrapper | Runs `aider` as subprocess, parses stdout for tool calls |
 | **Continue.dev** | Log tailing | Parses `~/.continue/logs/core.log` for JSON tool call entries |
 | **Codex CLI** | Rollout parser | Parses `~/.codex/sessions/.../rollout-*.jsonl` — `function_call`/`function_call_output` paired by `call_id` |
+| **Hermes Agent** | state.db parser | Parses `~/.hermes/state.db` SQLite — OpenAI-format messages, reasoning column, results merged into calls by `tool_call_id` |
 | **GitHub Copilot** | Log tailing | Parses `~/.config/Code/logs/` extension host logs for Copilot tool calls |
+| **DeepSeek Harness** | Session log parser | Parses `~/.dsh/sessions/<workspace>/<id>/session.jsonl.zstd` — native `turn`/`step`/`callId` metadata yields exact fan-out (parallel calls per step) and multi-parent fan-in (joint results cause the next step) |
 
 ```bash
 # Claude Code — automatic via hooks
@@ -125,6 +127,14 @@ causetrace enrich-opencode <session_id> --save
 causetrace enrich-codex-sessions
 causetrace enrich-codex <session_id> --save
 
+# Hermes Agent — enrich SQLite state.db sessions
+causetrace enrich-hermes-sessions
+causetrace enrich-hermes <session_id> --save
+
+# DeepSeek Harness — enrich session logs with native causal structure
+causetrace enrich-dsh-sessions
+causetrace enrich-dsh <session_id> --save
+
 # Log-based agents — scan and save (heuristic causality)
 causetrace opencode --save
 causetrace continue --save
@@ -138,7 +148,9 @@ Usage notes:
 - **Claude Code** — most precise, captures full causality via Pre/Post hooks
 - **Aider** — `causetrace aider --save -- [aider args]` wraps the CLI; best-effort parsing from output
 - **Codex CLI (enrich)** — parses real rollout format: `function_call`/`function_call_output` paired by `call_id`, `agent_message` for reasoning
+- **Hermes Agent (enrich)** — reads `sessions`/`messages` from `~/.hermes/state.db`; reasoning column and OpenAI `tool_calls` extracted, `role='tool'` outputs merged into their call by `tool_call_id`
 - **OpenCode (enrich)** — extracts reasoning + tool calls from SQLite DB with causal parent-child links
+- **DeepSeek Harness (enrich)** — consumes persisted `turn`/`step`/`callId` records directly: no heuristic chaining, parallel tool calls fan-out from one reasoning event and fan-in on the next step via comma-separated parents; tool results carry measured `duration_ms`
 - **Continue.dev**, **Copilot** — post-hoc log scanning; causality inferred from temporal proximity via `infer_relations()`
 - **Codex CLI (`codex`)** — legacy scanner retained for compatibility; use `enrich-codex` for validated rollout ingestion
 - All log-based agents infer causality heuristically — timestamps between events determine parent→child chains
@@ -185,6 +197,7 @@ causetrace validate <session_id>                 # Integrity and malformed JSONL
 causetrace stats <session_id>                    # Topology summary
 causetrace roots <session_id>                    # Local roots and downstream depth
 causetrace critical-path <session_id>            # Longest local causal chain
+causetrace fidelity <session_id>                 # Native links vs temporal-inference agreement
 causetrace patterns <session_id> --json          # Structured path/transition/fan-in output
 causetrace patterns <session_id> --csv           # Transitions CSV
 causetrace annotate <session_id> --task-type bug_fix --success
@@ -212,6 +225,7 @@ session marks a local boundary, so its child is analyzed as a local root.
 ### Validated Cases
 
 - [Codex CLI rollout parsing case study](docs/case-studies/codex-rollout-parser.md)
+- [DSH native causality case study](docs/case-studies/dsh-native-causality.md)
 - [Claude Code hook causality failure observation](examples/traces/failures/observations-claude-code-hooks.md)
 - [Runtime research notes](docs/research-notes/README.md)
 - [Research index](docs/research/README.md)
@@ -255,6 +269,10 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace enrich-opencode <id> [--save]` | Enrich from OpenCode DB session |
 | `causetrace enrich-codex-sessions` | List Codex CLI rollout sessions |
 | `causetrace enrich-codex <id> [--save]` | Enrich from Codex CLI rollout session |
+| `causetrace enrich-hermes-sessions` | List Hermes Agent sessions (state.db) |
+| `causetrace enrich-hermes <id> [--save]` | Enrich from Hermes Agent SQLite session |
+| `causetrace enrich-dsh-sessions` | List DeepSeek Harness sessions |
+| `causetrace enrich-dsh <id> [--save]` | Enrich from DSH session log (native causality) |
 | `causetrace opencode [--save]` | Scan OpenCode logs |
 | `causetrace aider [--save] -- [args]` | Run aider with tracing |
 | `causetrace continue [--save]` | Scan Continue.dev logs |
@@ -264,6 +282,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace stats [<id>]` | Show structural topology statistics |
 | `causetrace roots [<id>]` | Show local roots and downstream metrics |
 | `causetrace critical-path [<id>]` | Show longest local root-to-leaf chain |
+| `causetrace fidelity [<id>] [--json]` | Compare native causal links against temporal inference (ground-truth runtimes) |
 | `causetrace patterns [<id>] [--json\|--csv]` | Show causal paths and transitions; CSV exports transitions |
 | `causetrace annotate <id> [...]` | Store sidecar task/source/result metadata |
 | `causetrace metadata <id>` | Show standardized runtime metadata sidecars |
@@ -330,6 +349,8 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace/hooks/claude_project_parser.py` | Claude Code project session parser |
 | `causetrace/hooks/opencode_parser.py` | OpenCode SQLite DB session parser |
 | `causetrace/hooks/codex_parser.py` | Codex CLI rollout JSONL parser |
+| `causetrace/hooks/hermes_parser.py` | Hermes Agent SQLite state.db parser |
+| `causetrace/hooks/dsh_parser.py` | DeepSeek Harness session log parser (zstd JSONL, native causality) |
 | `causetrace/hooks/opencode_tailer.py` | OpenCode log tailer |
 | `causetrace/hooks/aider_bridge.py` | Aider subprocess wrapper |
 | `causetrace/hooks/continue_tailer.py` | Continue.dev log tailer |

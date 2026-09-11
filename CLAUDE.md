@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What causetrace does
 
-causetrace is an Agent Runtime Observation primitive — it captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot) and links them into causal trees and DAGs via `parent_event_id` chains. Instead of flat timelines, every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
+causetrace is an Agent Runtime Observation primitive — it captures tool calls from coding agents (Claude Code, OpenCode, Aider, Continue.dev, Codex CLI, GitHub Copilot, Hermes Agent, DeepSeek Harness) and links them into causal trees and DAGs via `parent_event_id` chains. Instead of flat timelines, every event records *why* it happened, enabling replay, root-cause analysis, and behavior explanation.
 
 ## Before making changes
 
@@ -45,6 +45,10 @@ causetrace enrich-opencode-sessions       # List OpenCode DB sessions
 causetrace enrich-opencode <id> [--save]  # Enrich from OpenCode DB session
 causetrace enrich-codex-sessions          # List Codex CLI rollout sessions
 causetrace enrich-codex <id> [--save]     # Enrich from Codex CLI rollout session
+causetrace enrich-hermes-sessions         # List Hermes Agent sessions (state.db)
+causetrace enrich-hermes <id> [--save]    # Enrich from Hermes Agent SQLite session
+causetrace enrich-dsh-sessions            # List DeepSeek Harness (DSH) sessions
+causetrace enrich-dsh <id> [--save]       # Enrich from DSH session log (native causality)
 causetrace opencode [--save]              # Scan OpenCode logs
 causetrace aider [--save] -- [args]       # Run aider with tracing
 causetrace continue [--save]              # Scan Continue.dev logs
@@ -54,6 +58,7 @@ causetrace doctor                         # Diagnose agent configuration and dat
 causetrace stats [session]                # Structural session statistics
 causetrace roots [session]                # Root events with downstream metrics
 causetrace critical-path [session]        # Longest root-to-leaf causal chain
+causetrace fidelity [session] [--json]    # Native links vs temporal inference (ground-truth runtimes)
 causetrace patterns [session]             # Repeated tool patterns & transitions
 causetrace patterns [session] --csv       # Causal transitions as CSV
 causetrace validate [session]             # Check JSONL/references/cycles
@@ -71,6 +76,7 @@ causetrace uninstall-claude-hook           # Remove only managed hooks
 - **`causetrace/invariants.py`** — Composable DAG correctness checkers (acyclicity, unique IDs, root definition, local references). Used by DAG fixture tests.
 - **`causetrace/analysis.py`** — Session analysis primitives (structural + pattern). Layer 1: graph/path/topology metrics (compute_stats, find_roots, longest_path). Layer 1.2: entropy & density (transition_entropy, branch_density, root_spawning_rate, path_reuse_ratio). Layer 2: structural patterns without semantic naming (detect_repeated_paths, detect_common_transitions, detect_fan_in_patterns, detect_branch_collapse).
 - **`causetrace/causality.py`** — Temporal causality inference for unstructured logs: turn detection, sequential chaining, fan-in detection. Used by log-based tailers.
+- **`causetrace/fidelity.py`** — Measures `infer_relations()` against native ground-truth parent links (`causetrace fidelity`): edge recall/precision, fan-in exact reproduction. Only meaningful for runtimes persisting native causality (DSH).
 - **`causetrace/cli.py`** — argparse-based CLI dispatching capture, analysis, annotation, and diagnostic commands.
 - **`causetrace/onboarding.py`** — Self-contained demo session generation and safe Claude Code hook settings updates.
 - **`causetrace/hooks/`** — Agent-specific bridges and tailers:
@@ -78,14 +84,18 @@ causetrace uninstall-claude-hook           # Remove only managed hooks
   - `claude_project_parser.py` — Claude Code project session parser (enrich)
   - `opencode_parser.py` — OpenCode SQLite DB session parser (enrich)
   - `codex_parser.py` — Codex CLI rollout JSONL parser (enrich)
+  - `hermes_parser.py` — Hermes Agent SQLite state.db parser (enrich; OpenAI message format, results merged by `tool_call_id`, sequential causal chaining)
   - `opencode_tailer.py` — OpenCode tool.registry log parser (legacy)
   - `aider_bridge.py` — Aider subprocess wrapper (stdout parsing)
   - `continue_tailer.py` — Continue.dev JSON log tailer
   - `codex_tailer.py` — Codex CLI JSONL session log parser (legacy, use enrich)
   - `copilot_tailer.py` — GitHub Copilot VS Code extension host log parser
+  - `dsh_parser.py` — DeepSeek Harness session log parser (enrich; native turn/step/callId causality, zstd-compressed JSONL under `~/.dsh/sessions/`)
 - **`tests/test_invariants.py`** — Tests runtime invariants (serialization roundtrip, causality acyclicity, append-only integrity, renderer stability), not business logic.
 - **`tests/test_enrich.py`** — Tests for Claude Code project session parser.
 - **`tests/test_opencode_enrich.py`** — Tests for OpenCode DB session parser.
+- **`tests/test_dsh_parser.py`** — Tests for DSH session log parser (fan-out/fan-in causality, result merging, zstd loading).
+- **`tests/test_hermes_parser.py`** — Tests for Hermes Agent state.db parser.
 - **`tests/test_dag_fixtures.py`** — Topology fixtures and session-local analysis regression tests.
 - **`tests/test_onboarding.py`** — First-run demo and Claude Code configuration regression tests.
 
