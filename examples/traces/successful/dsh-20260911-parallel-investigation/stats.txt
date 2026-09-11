@@ -1,0 +1,16 @@
+Session: dsh-20260911-parallel-investigation  (41 events)
+
+  Events       41
+  Tools        6 (Thinking×14, ReadSegment×10, Search×9, ReadFile×5, List×2)
+  Roots        1
+  Leaves       1
+  Time span    2m33s
+
+  Causal topology:
+  Max depth         28
+  Avg depth         14.0
+  Avg chain length  29.0
+  Fan-out avg       1.27
+  Fan-out max       2
+  Link ratio        0.976
+  Multi-parent      12

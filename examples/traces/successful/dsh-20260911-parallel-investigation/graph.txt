@@ -1,0 +1,67 @@
+Session: dsh-20260911-parallel-investigation  (41 events, multi-parent DAG)
+
+  [01:40:40] Prompt(['text'])
+  [01:40:50] Thinking(['content'])  ← Prompt(['text'])
+  [01:40:50] List(['operation']) (75ms)  ← Thinking(['content'])
+  [01:40:51] List(['operation']) (567ms)  ← Thinking(['content'])
+  ──┐
+  List(['operation'])   ├──→ 
+  List(['operation'])   └──→ Thinking(['content'])
+  [01:40:58] Search(['operation']) (64ms)  ← Thinking(['content'])
+  [01:40:58] Search(['operation']) (307ms)  ← Thinking(['content'])
+  ──┐
+  Search(['operation'])   ├──→ 
+  Search(['operation'])   └──→ Thinking(['content'])
+  [01:41:11] Search(['operation']) (315ms)  ← Thinking(['content'])
+  [01:41:11] ReadSegment(['operation']) (60ms)  ← Thinking(['content'])
+  ──┐
+  Search(['operation'])   ├──→ 
+  ReadSegment(['operation'])   └──→ Thinking(['content'])
+  [01:41:21] ReadSegment(['operation']) (70ms)  ← Thinking(['content'])
+  [01:41:21] ReadSegment(['operation']) (63ms)  ← Thinking(['content'])
+  ──┐
+  ReadSegment(['operation'])   ├──→ 
+  ReadSegment(['operation'])   └──→ Thinking(['content'])
+  [01:41:29] ReadSegment(['operation']) (81ms)  ← Thinking(['content'])
+  [01:41:30] ReadFile(['path']) (36ms)  ← Thinking(['content'])
+  ──┐
+  ReadSegment(['operation'])   ├──→ 
+  ReadFile(['path'])   └──→ Thinking(['content'])
+  [01:41:38] Search(['operation']) (117ms)  ← Thinking(['content'])
+  [01:41:38] ReadFile(['path']) (21ms)  ← Thinking(['content'])
+  ──┐
+  Search(['operation'])   ├──→ 
+  ReadFile(['path'])   └──→ Thinking(['content'])
+  [01:41:46] ReadSegment(['operation']) (66ms)  ← Thinking(['content'])
+  [01:41:53] Thinking(['content'])  ← ReadSegment(['operation'])
+  [01:41:53] ReadSegment(['operation']) (65ms)  ← Thinking(['content'])
+  [01:41:53] ReadFile(['path']) (34ms)  ← Thinking(['content'])
+  ──┐
+  ReadSegment(['operation'])   ├──→ 
+  ReadFile(['path'])   └──→ Thinking(['content'])
+  [01:42:08] ReadFile(['path']) (52ms)  ← Thinking(['content'])
+  [01:42:08] ReadFile(['path']) (63ms)  ← Thinking(['content'])
+  ──┐
+  ReadFile(['path'])   ├──→ 
+  ReadFile(['path'])   └──→ Thinking(['content'])
+  [01:42:18] Search(['operation']) (324ms)  ← Thinking(['content'])
+  [01:42:19] ReadSegment(['operation']) (62ms)  ← Thinking(['content'])
+  ──┐
+  Search(['operation'])   ├──→ 
+  ReadSegment(['operation'])   └──→ Thinking(['content'])
+  [01:42:35] ReadSegment(['operation']) (79ms)  ← Thinking(['content'])
+  [01:42:35] Search(['operation']) (80ms)  ← Thinking(['content'])
+  ──┐
+  ReadSegment(['operation'])   ├──→ 
+  Search(['operation'])   └──→ Thinking(['content'])
+  [01:42:45] Search(['operation']) (173ms)  ← Thinking(['content'])
+  [01:42:46] Search(['operation']) (64ms)  ← Thinking(['content'])
+  ──┐
+  Search(['operation'])   ├──→ 
+  Search(['operation'])   └──→ Thinking(['content'])
+  [01:43:03] ReadSegment(['operation']) (57ms)  ← Thinking(['content'])
+  [01:43:03] Search(['operation']) (68ms)  ← Thinking(['content'])
+  ──┐
+  ReadSegment(['operation'])   ├──→ 
+  Search(['operation'])   └──→ Thinking(['content'])
+  [01:43:13] ReadSegment(['operation']) (58ms)  ← Thinking(['content'])

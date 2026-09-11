@@ -36,8 +36,13 @@ Example: `claude-code-20260514-bugfix-session`
 
 1. Sanitize prompts, paths, tool output, and credentials from the trace.
 2. Run `causetrace validate <session_id>` before export.
-3. Run `causetrace export <session_id> > session.jsonl`.
+3. Copy the store file: `cp ~/.causetrace/data/<session_id>.jsonl session.jsonl`
+   — true JSONL (one `ToolEvent` object per line), which reloads into
+   `JSONStore` directly. (`causetrace export` emits a single JSON *array*; it
+   reads fine but the `.jsonl` name is a misnomer — prefer the store copy.)
 4. Run `causetrace tree <session_id> > tree.txt` and `causetrace stats <session_id> > stats.txt`.
+   For sessions with multi-parent (fan-in) edges also add `graph.txt` from
+   `causetrace graph <session_id>` — the tree view follows first-parent edges only.
 5. Add observations and open a PR.
 
 Fragments are allowed: analysis treats references to parents outside the
