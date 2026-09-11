@@ -20,6 +20,7 @@ from causetrace.analysis import (
     windowed, transition_entropy, branch_density, root_spawning_rate,
     path_reuse_ratio, classify_topology, detect_topology_shift,
 )
+from causetrace.fidelity import measure_fidelity
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "dags"
 
@@ -570,3 +571,49 @@ def test_invariant_battery(name, expect_valid):
         cycle_vios = result["checks"]["acyclicity"]["violations"]
         assert len(cycle_vios) >= 1, \
             f"{name}: expected cycle detection, got none"
+
+
+# ── Causal fidelity: native links vs temporal inference ──
+
+def test_fidelity_no_ground_truth_returns_none():
+    """A single linkless event cannot be measured."""
+    assert measure_fidelity(load_fixture("forest")[:1]) is None
+
+
+def test_fidelity_serial_chain_perfect():
+    """A pure serial chain: temporal inference reproduces it exactly."""
+    r = measure_fidelity(load_fixture("chain"))
+    assert r["native_edges"] == 3
+    assert r["child_exact_agreement"] == 1.0
+    assert r["edge_f1"] == 1.0
+    assert r["missed_edge_rate"] == 0.0
+    assert r["spurious_edge_rate"] == 0.0
+    assert r["fan_in_native"] == 0
+
+
+def test_fidelity_detects_fabricated_fan_in():
+    """Diamond: heuristics claim more multi-parent children than exist and
+    reproduce the single true joint cause zero times."""
+    r = measure_fidelity(load_fixture("diamond"))
+    assert r["fan_in_native"] == 1
+    assert r["fan_in_claimed"] > r["fan_in_native"]
+    assert r["fan_in_reproduced"] == 0
+    assert r["child_exact_agreement"] < 0.5
+    assert r["spurious_edge_rate"] > 0.5
+
+
+@pytest.mark.parametrize("name", ["fan-in", "timed-fan-in"])
+def test_fidelity_reproduces_isolated_fan_in(name):
+    """A lone joint-cause node with no competing reads is rebuilt exactly."""
+    r = measure_fidelity(load_fixture(name))
+    assert r["fan_in_native"] == 1
+    assert r["fan_in_reproduced"] == 1
+    assert r["missed_edge_rate"] == 0.0
+
+
+def test_fidelity_does_not_mutate_input():
+    """Measurement clones internally; ground-truth parents stay intact."""
+    events = load_fixture("diamond")
+    before = [(e.event_id, e.parent_event_id) for e in events]
+    measure_fidelity(events)
+    assert [(e.event_id, e.parent_event_id) for e in events] == before

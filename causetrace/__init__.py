@@ -4,6 +4,8 @@ from .cli import cli
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
+from .hooks.hermes_parser import parse_session as enrich_hermes_session, list_sessions as list_hermes_sessions
+from .hooks.dsh_parser import parse_session as enrich_dsh_session, list_sessions as list_dsh_sessions
 
 __version__ = "0.3.0"
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "enrich_session", "list_claude_sessions",
     "enrich_opencode_session", "list_opencode_sessions",
     "enrich_codex_session", "list_codex_sessions",
+    "enrich_hermes_session", "list_hermes_sessions",
+    "enrich_dsh_session", "list_dsh_sessions",
 ]

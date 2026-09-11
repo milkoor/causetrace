@@ -18,6 +18,7 @@ from .analysis import (
 )
 from .annotation import load_annotation, save_annotation, list_annotated, list_unannotated, TASK_TYPES, SOURCES
 from .causality import causal_quality_report
+from .fidelity import measure_fidelity
 from .corpus import benchmark_corpus, compare_benchmark_manifests, export_dataset, group_labeled_sessions, list_corpus_records, materialize_corpus_metadata, snapshot_corpus, taxonomy_corpus, verify_benchmark_manifest, verify_snapshot
 from .crdd import (
     SUBSET_DEFINITIONS,
@@ -32,6 +33,13 @@ from .crdd import (
 from .hooks.claude_project_parser import parse_session as enrich_session, list_sessions as list_claude_sessions
 from .hooks.opencode_parser import parse_session as enrich_opencode_session, list_sessions as list_opencode_sessions
 from .hooks.codex_parser import parse_session as enrich_codex_session, list_sessions as list_codex_sessions
+from .hooks.hermes_parser import parse_session as enrich_hermes_session, list_sessions as list_hermes_sessions
+from .hooks.dsh_parser import (
+    parse_session as enrich_dsh_session,
+    list_sessions as list_dsh_sessions,
+    set_sessions_dir as set_dsh_sessions_dir,
+    SESSIONS_DIR as DSH_SESSIONS_DIR,
+)
 from .hooks.opencode_tailer import scan_logs as scan_opencode
 from .hooks.continue_tailer import scan_logs as scan_continue
 from .hooks.codex_tailer import scan_logs as scan_codex
@@ -145,6 +153,33 @@ def _run_doctor() -> list[tuple[bool, str, str]]:
         results.append(_check_result("GitHub Copilot", False,
             f"{code_logs} not found"))
 
+    # ── Hermes Agent ──
+    hermes_db = Path.home() / ".hermes" / "state.db"
+    if hermes_db.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(hermes_db))
+            session_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            msg_count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+            conn.close()
+            results.append(_check_result("Hermes Agent", True,
+                f"{session_count} sessions, {msg_count} messages in {hermes_db}"))
+        except Exception as e:
+            results.append(_check_result("Hermes Agent", False, str(e)))
+    else:
+        results.append(_check_result("Hermes Agent", False,
+            f"{hermes_db} not found"))
+
+    # ── DeepSeek Harness (DSH) ──
+    dsh_sessions = DSH_SESSIONS_DIR
+    if dsh_sessions.exists():
+        dsh_files = list(dsh_sessions.glob("*/*/session.jsonl*"))
+        results.append(_check_result("DeepSeek Harness", True,
+            f"{len(dsh_files)} session logs in {dsh_sessions}"))
+    else:
+        results.append(_check_result("DeepSeek Harness", False,
+            f"{dsh_sessions} not found"))
+
     return results
 
 
@@ -237,6 +272,26 @@ def cli(argv: list[str] | None = None) -> None:
     p_cx_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_cx_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
 
+    sub.add_parser("enrich-hermes-sessions", help="List available Hermes Agent sessions")
+
+    p_he_enrich = sub.add_parser("enrich-hermes", help="Enrich trace from Hermes Agent session (extracts reasoning)")
+    p_he_enrich.add_argument("session_id", help="Hermes session ID")
+    p_he_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_he_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_he_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
+    p_he_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
+
+    sub.add_parser("enrich-dsh-sessions", help="List available DeepSeek Harness (DSH) sessions").add_argument(
+        "--dsh-home", help="DSH home directory to scan (default: ~/.dsh; e.g. ~/.dsh-backup)")
+
+    p_dsh_enrich = sub.add_parser("enrich-dsh", help="Enrich trace from DSH session log (native turn/step/callId causality)")
+    p_dsh_enrich.add_argument("session_id", help="DSH session ID")
+    p_dsh_enrich.add_argument("--dsh-home", help="DSH home directory (default: ~/.dsh; e.g. ~/.dsh-backup)")
+    p_dsh_enrich.add_argument("--save", action="store_true", help="Save enriched events as a causetrace session")
+    p_dsh_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
+    p_dsh_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
+    p_dsh_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
+
     p_val = sub.add_parser("validate", help="Validate session integrity")
     p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
     p_val.add_argument("--all", action="store_true", help="Validate all stored sessions")
@@ -250,6 +305,10 @@ def cli(argv: list[str] | None = None) -> None:
 
     p_cp = sub.add_parser("critical-path", help="Show longest root-to-leaf causal chain")
     p_cp.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+
+    p_fid = sub.add_parser("fidelity", help="Measure temporal inference against native causal links (ground-truth runtimes only)")
+    p_fid.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
+    p_fid.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_pt = sub.add_parser("patterns", help="Show repeated tool patterns and transitions")
     p_pt.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
@@ -623,6 +682,88 @@ def cli(argv: list[str] | None = None) -> None:
         if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
 
+    elif args.command == "enrich-hermes-sessions":
+        sessions = list_hermes_sessions()
+        if not sessions:
+            print("No Hermes Agent sessions found in state.db.")
+            return
+        print(f"Hermes sessions ({len(sessions)}):")
+        for s in sessions[:30]:
+            model = s.get("model", "?")
+            msg_count = s.get("message_count", 0)
+            title = s.get("title") or ""
+            print(f"  {s['session_id']}  (model={model}, {msg_count} msgs) {title[:60]}")
+        if len(sessions) > 30:
+            print(f"  ... and {len(sessions) - 30} more")
+
+    elif args.command == "enrich-hermes":
+        events = enrich_hermes_session(args.session_id)
+        if not events:
+            print(f"No events extracted from session: {args.session_id}")
+            sys.exit(1)
+
+        reasoning = sum(1 for e in events if e.event_type == "reasoning")
+        tool_calls = sum(1 for e in events if e.event_type == "tool_call")
+        rooted = sum(1 for e in events if e.parent_event_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Events:    {len(events)}")
+        print(f"  Reasoning: {reasoning}")
+        print(f"  Tool calls: {tool_calls}")
+        print(f"  Rooted:    {rooted}")
+
+        if args.output:
+            print()
+            TimelineRenderer.print_timeline(events)
+
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
+            _auto_detect_intervention_tags(args.session_id)
+
+    elif args.command == "enrich-dsh-sessions":
+        if getattr(args, "dsh_home", None):
+            set_dsh_sessions_dir(args.dsh_home)
+        sessions = list_dsh_sessions()
+        if not sessions:
+            print("No DSH sessions found under ~/.dsh/sessions/.")
+            return
+        print(f"DSH sessions ({len(sessions)}):")
+        for s in sessions[:30]:
+            model = s.get("model") or "?"
+            created = (s.get("created") or "?")[:19]
+            title = s.get("title") or ""
+            print(f"  {s['session_id']}  ({created}, model={model}) {title[:50]}")
+        if len(sessions) > 30:
+            print(f"  ... and {len(sessions) - 30} more")
+
+    elif args.command == "enrich-dsh":
+        if getattr(args, "dsh_home", None):
+            set_dsh_sessions_dir(args.dsh_home)
+        events = enrich_dsh_session(args.session_id)
+        if not events:
+            print(f"No events extracted from session: {args.session_id}")
+            sys.exit(1)
+
+        reasoning = sum(1 for e in events if e.event_type == "reasoning")
+        tool_calls = sum(1 for e in events if e.event_type == "tool_call")
+        user_inputs = sum(1 for e in events if e.event_type == "user_input")
+        fan_in = sum(1 for e in events if e.parent_event_id and "," in e.parent_event_id)
+        rooted = sum(1 for e in events if e.parent_event_id)
+        print(f"Session: {args.session_id}")
+        print(f"  Events:     {len(events)}")
+        print(f"  Reasoning:  {reasoning}")
+        print(f"  Tool calls: {tool_calls}")
+        print(f"  User turns: {user_inputs}")
+        print(f"  Fan-in:     {fan_in} (steps caused by multiple parallel calls)")
+        print(f"  Rooted:     {rooted}")
+
+        if args.output:
+            print()
+            TimelineRenderer.print_timeline(events)
+
+        summary = _persist_imported_events(store, args.session_id, events, args)
+        if summary and summary["written"]:
+            _auto_detect_intervention_tags(args.session_id)
+
     elif args.command == "stats":
         sid, events = _load(args.session_id)
         stats = compute_stats(events)
@@ -642,6 +783,27 @@ def cli(argv: list[str] | None = None) -> None:
         by_id = {e.event_id: e for e in events}
         print(f"Session: {sid}  (critical path: {len(path_ids)} events)\n")
         _print_critical_path(path_ids, by_id)
+
+    elif args.command == "fidelity":
+        sid, events = _load(args.session_id)
+        report = measure_fidelity(events)
+        if report is None:
+            print(f"Session: {sid} — no native parent links recorded.")
+            print("Fidelity needs ground truth (e.g. dsh/enrich imports); heuristic-only sessions have nothing to compare against.")
+            sys.exit(1)
+        if args.json:
+            print(json.dumps({"session_id": sid, **report}, indent=2))
+        else:
+            print(f"Session: {sid}  (native links vs temporal inference, {report['event_count']} events)\n")
+            print(f"  Children compared:       {report['children_compared']}")
+            print(f"  Full parent-set agreement: {report['child_exact_agreement']:.1%}")
+            print(f"  Edge recall / precision / F1: "
+                  f"{report['edge_recall']:.3f} / {report['edge_precision']:.3f} / {report['edge_f1']:.3f}")
+            print(f"  Missed native edges:     {report['missed_edge_rate']:.1%}")
+            print(f"  Spurious inferred edges: {report['spurious_edge_rate']:.1%}")
+            fan = report['fan_in_native']
+            rep = f"{report['fan_in_reproduced']}/{fan}" if fan else "n/a"
+            print(f"  Fan-in children:         native {fan} | inferred claims {report['fan_in_claimed']} | exactly reproduced {rep}")
 
     elif args.command == "patterns":
         sid, events = _load(args.session_id)
