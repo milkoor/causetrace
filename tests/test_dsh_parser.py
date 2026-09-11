@@ -65,6 +65,33 @@ def _result(turn, step, call_id, text, is_error=False):
             }}
 
 
+def _disp(root_id, sub_id, name, arguments, parent_id=None):
+    return {"rootCallId": root_id, "parentCallId": parent_id or root_id,
+            "subCallId": sub_id, "name": name, "arguments": arguments}
+
+
+def _disp_done(root_id, sub_id, name, arguments, text, is_error=False, parent_id=None):
+    d = _disp(root_id, sub_id, name, arguments, parent_id)
+    d["content"] = [{"type": "text", "text": text}]
+    d["isError"] = is_error
+    return d
+
+
+def _splice(target, msg_id, text, rpc_id=None):
+    return {"target": target, "inserted": [{
+        "id": msg_id, "role": "user",
+        "content": [{"type": "text", "text": text}],
+        "source": {"kind": "user", "rpcId": rpc_id or ("rpc-" + msg_id)},
+    }]}
+
+
+def _user_with_id(msg_id, text, rpc_id):
+    r = _user_text(text)
+    r["id"] = msg_id
+    r["source"]["rpcId"] = rpc_id
+    return r
+
+
 def _write_session(root: Path, session_id: str, records, zstd: bool = False) -> Path:
     sess_dir = root / "--tmp-project--" / session_id
     sess_dir.mkdir(parents=True, exist_ok=True)
@@ -321,3 +348,77 @@ def test_load_records_skips_garbage(dsh_home):
 def test_empty_session_dir(dsh_home):
     assert parse_session("missing") == []
     assert list_sessions() == []
+
+
+def test_run_code_inner_calls_are_nested_events(dsh_home):
+    """run_code's inner tool dispatches become first-class events under the
+    outer call; deeper nesting parents on the inner call; orphans are
+    skipped rather than fabricated."""
+    sid = "session-nest"
+    root = "call_00_ROOT"
+    _write_session(dsh_home, sid, [
+        _header(sid),
+        _rec(1, "user/message", T0, _user_text("go")),
+        _rec(2, "assistant/message", T0 + 1, _assistant(1, 1, [
+            {"type": "reasoning", "text": "script it"},
+            {"type": "tool-call", "toolCallId": root, "toolName": "run_code", "input": {}},
+        ])),
+        _rec(3, "tool/call", T0 + 10, _call(1, 1, root, "run_code", {"code": "..."})),
+        _rec(4, "tool/code-dispatch-start", T0 + 11,
+             _disp(root, root + ":code:1", "bash", {"command": "ls"})),
+        _rec(5, "tool/code-dispatch", T0 + 14,
+             _disp_done(root, root + ":code:1", "bash", {"command": "ls"}, "a.py\nb.py")),
+        _rec(6, "tool/code-dispatch-start", T0 + 15,
+             _disp(root, root + ":code:2", "read", {"file_path": "a.py"})),
+        _rec(7, "tool/code-dispatch", T0 + 18,
+             _disp_done(root, root + ":code:2", "read", {"file_path": "a.py"}, "boom", is_error=True)),
+        _rec(8, "tool/code-dispatch-start", T0 + 19,
+             _disp(root, root + ":code:1:code:1", "grep", {"pattern": "x"}, parent_id=root + ":code:1")),
+        _rec(9, "tool/code-dispatch", T0 + 21,
+             _disp_done(root, root + ":code:1:code:1", "grep", {"pattern": "x"}, "hit", parent_id=root + ":code:1")),
+        _rec(10, "tool/code-dispatch-start", T0 + 22,
+             _disp("call_00_ORPHAN", "call_00_ORPHAN:code:1", "globus", {"p": 1})),
+        _rec(11, "tool/result", T0 + 20, _result(1, 1, root, "ran fine")),
+    ])
+    events = parse_session(sid)
+    by = {}
+    for e in events:
+        by.setdefault(e.tool_name, []).append(e)
+
+    outer = by["run_code"][0]
+    assert outer.tool_output == "ran fine"
+    assert outer.duration_ms == 10.0
+
+    assert len(by["bash"]) == 1          # the orphan dispatch was skipped
+    inner_bash = by["bash"][0]
+    assert inner_bash.parent_event_id == outer.event_id
+    assert inner_bash.duration_ms == 3.0
+    assert inner_bash.tool_output == "a.py\nb.py"
+
+    inner_read = by["read"][0]
+    assert inner_read.parent_event_id == outer.event_id
+    assert inner_read.duration_ms == 3.0
+    assert "[isError=true]" in inner_read.tool_output
+
+    deep = by["grep"][0]
+    assert deep.parent_event_id == inner_bash.event_id   # nested under the inner call
+
+
+def test_next_step_splice_marked_mid_turn(dsh_home):
+    """User content spliced with target=next-step is a mid-turn intervention;
+    next-turn splices remain normal turn roots."""
+    sid = "session-steer"
+    _write_session(dsh_home, sid, [
+        _header(sid),
+        _rec(1, "user/message", T0, _user_with_id("m1", "start task", "rpc1")),
+        _rec(2, "assistant/message", T0 + 1, _assistant(1, 1, [{"type": "reasoning", "text": "plan"}])),
+        _rec(3, "agent/inbox/spliced", T0 + 2, _splice("next-step", "m2", "actually use pytest")),
+        _rec(4, "user/message", T0 + 3, _user_with_id("m2", "actually use pytest", "rpc-m2")),
+        _rec(5, "agent/inbox/spliced", T0 + 4, _splice("next-turn", "m3", "new task please")),
+        _rec(6, "user/message", T0 + 5, _user_with_id("m3", "new task please", "rpc-m3")),
+    ])
+    prompts = [e for e in parse_session(sid) if e.event_type == "user_input"]
+    assert len(prompts) == 3
+    assert "mid_turn" not in prompts[0].tool_input
+    assert prompts[1].tool_input.get("mid_turn") is True
+    assert "mid_turn" not in prompts[2].tool_input

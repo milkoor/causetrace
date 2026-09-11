@@ -44,6 +44,15 @@ Causal fidelity:
       their joint results are what the next model request consumes
     - tool results are merged back into their call event (output + measured
       duration), never as separate events — same convention as codex_parser
+    - ``run_code`` dispatches REAL inner tool calls, logged as
+      ``tool/code-dispatch-start`` / ``tool/code-dispatch`` pairs with a
+      hierarchical ``subCallId`` (``<parent>:code:N``); each inner call
+      becomes a first-class event parented to its dispatching call
+      (``parentCallId``, falling back to ``rootCallId``), with the pair's
+      time delta as duration — a second, genuine level of the DAG
+    - user messages spliced with ``target:"next-step"`` (mid-turn steering,
+      correlated via ``agent/inbox/spliced`` id/rpcId) are marked
+      ``tool_input["mid_turn"] = True`` to distinguish them from turn roots
     - slash commands become ``context_update`` events (schema-approved type)
 
 Sub-agents run as separate DSH session directories (``delegationDepth`` in the
@@ -77,6 +86,9 @@ _USER_MESSAGE = "user/message"
 _ASSISTANT_MESSAGE = "assistant/message"
 _TOOL_CALL = "tool/call"
 _TOOL_RESULT = "tool/result"
+_CODE_DISPATCH_START = "tool/code-dispatch-start"
+_CODE_DISPATCH_DONE = "tool/code-dispatch"
+_INBOX_SPLICED = "agent/inbox/spliced"
 _COMMAND_RUN = "command/run"
 _COMMAND_DONE = "command/done"
 _REQUEST_HEADER = "request/header"
@@ -319,6 +331,9 @@ def parse_session(session_id: str) -> List[ToolEvent]:
     calls_by_id: Dict[str, ToolEvent] = {}   # DSH callId -> event
     cmds_by_id: Dict[str, ToolEvent] = {}    # DSH commandId -> event
     call_times: Dict[str, int] = {}          # DSH callId -> call record ms
+    nested_by_subid: Dict[str, ToolEvent] = {}   # subCallId -> inner event
+    nested_times: Dict[str, int] = {}            # subCallId -> start record ms
+    mid_turn_keys: set = set()               # inserted ids/rpcIds with target=next-step
 
     model: Optional[str] = None
     route: Optional[str] = None
@@ -365,6 +380,46 @@ def parse_session(session_id: str) -> List[ToolEvent]:
             return ",".join(prev_refs)
         return user_root_id
 
+    def new_nested(data: Dict[str, Any], stamp: Optional[str], ms: Any) -> Optional[ToolEvent]:
+        """Create the event for an inner call dispatched by run_code.
+
+        Parent is the dispatching call itself (parentCallId, which may be
+        another inner call for deeper nesting; falls back to rootCallId).
+        Returns None when the dispatching call was never observed — never
+        fabricate an edge to a phantom node.
+        """
+        sub_id = data.get("subCallId", "") or ""
+        if not sub_id or sub_id in nested_by_subid:
+            return None
+        parent_ev = (nested_by_subid.get(data.get("parentCallId") or "")
+                     or calls_by_id.get(data.get("parentCallId") or "")
+                     or nested_by_subid.get(data.get("rootCallId") or "")
+                     or calls_by_id.get(data.get("rootCallId") or ""))
+        if parent_ev is None:
+            return None
+        arguments = data.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except (json.JSONDecodeError, TypeError):
+                arguments = {"raw": arguments}
+        if not isinstance(arguments, dict):
+            arguments = {"value": arguments}
+        event = add(ToolEvent(
+            tool_name=data.get("name") or "unknown",
+            tool_input=arguments,
+            event_type="tool_call",
+            parent_event_id=parent_ev.event_id,
+            timestamp=stamp,
+            model=model,
+            provider=_detect_provider(model, route),
+            agent=AGENT_NAME,
+        ))
+        nested_by_subid[sub_id] = event
+        if isinstance(ms, (int, float)):
+            nested_times[sub_id] = ms
+        return event
+
     for obj in records:
         t = obj.get("type")
         data = _record_data(obj)
@@ -383,6 +438,21 @@ def parse_session(session_id: str) -> List[ToolEvent]:
                 route = cfg.get("provider") or route
             continue
 
+        if t == _INBOX_SPLICED:
+            # Remember mid-turn insertions; the content re-lands as a
+            # user/message record and is correlated by message id / rpcId.
+            if data.get("target") == "next-step":
+                for ins in data.get("inserted") or []:
+                    if not isinstance(ins, dict):
+                        continue
+                    if (ins.get("source") or {}).get("kind") != "user":
+                        continue
+                    if ins.get("id"):
+                        mid_turn_keys.add(ins["id"])
+                    if (ins.get("source") or {}).get("rpcId"):
+                        mid_turn_keys.add(ins["source"]["rpcId"])
+            continue
+
         if t == _USER_MESSAGE:
             source = data.get("source") or {}
             # Only genuine user turns root the causal tree; plugin/skill
@@ -395,9 +465,12 @@ def parse_session(session_id: str) -> List[ToolEvent]:
             finalize_step(current_key)
             current_key = None
             prev_refs = []
+            tool_input: Dict[str, Any] = {"text": text[:2000]}
+            if data.get("id") in mid_turn_keys or source.get("rpcId") in mid_turn_keys:
+                tool_input["mid_turn"] = True
             event = add(ToolEvent(
                 tool_name="Prompt",
-                tool_input={"text": text[:2000]},
+                tool_input=tool_input,
                 event_type="user_input",
                 caused_by="user",
                 parent_event_id=None,
@@ -515,6 +588,27 @@ def parse_session(session_id: str) -> List[ToolEvent]:
                         call_event.duration_ms = delta
             continue
 
+        if t == _CODE_DISPATCH_START:
+            new_nested(data, stamp, obj.get("time"))
+            continue
+
+        if t == _CODE_DISPATCH_DONE:
+            sub_id = data.get("subCallId", "") or ""
+            event = nested_by_subid.get(sub_id) or new_nested(data, stamp, obj.get("time"))
+            if event is not None:
+                content = data.get("content")
+                out = _blocks_text(content) if isinstance(content, list) else str(content or "")
+                if data.get("isError"):
+                    out = f"{out}\n[isError=true]".strip()
+                event.tool_output = out[:2000]
+                start_ms = nested_times.get(sub_id)
+                done_ms = obj.get("time")
+                if isinstance(start_ms, (int, float)) and isinstance(done_ms, (int, float)):
+                    delta = float(done_ms - start_ms)
+                    if delta >= 0:
+                        event.duration_ms = delta
+            continue
+
         if t == _COMMAND_RUN:
             event = add(ToolEvent(
                 tool_name=f"/{data.get('name', 'command')}",
@@ -540,8 +634,9 @@ def parse_session(session_id: str) -> List[ToolEvent]:
             continue
 
         # everything else (chunk records, turn/*, step/*, compaction/*,
-        # todo/write, agent/inbox/spliced, llm/retry, metadata) carries no
-        # causetrace-level action; skipped deliberately.
+        # todo/write, llm/retry, metadata) carries no causetrace-level
+        # action; skipped deliberately. llm/retry is documented as a
+        # discarded observability channel in docs/schema/pressure-log.md.
 
     finalize_step(current_key)
     return events
