@@ -49,6 +49,7 @@ causetrace enrich-hermes-sessions         # List Hermes Agent sessions (state.db
 causetrace enrich-hermes <id> [--save]    # Enrich from Hermes Agent SQLite session
 causetrace enrich-dsh-sessions            # List DeepSeek Harness (DSH) sessions
 causetrace enrich-dsh <id> [--save]       # Enrich from DSH session log (native causality)
+causetrace dsh-tree [<id>] [--home] [--json]  # DSH session-level delegation forest (parentSession headers)
 causetrace opencode [--save]              # Scan OpenCode logs
 causetrace aider [--save] -- [args]       # Run aider with tracing
 causetrace continue [--save]              # Scan Continue.dev logs
@@ -90,7 +91,7 @@ causetrace uninstall-claude-hook           # Remove only managed hooks
   - `continue_tailer.py` — Continue.dev JSON log tailer
   - `codex_tailer.py` — Codex CLI JSONL session log parser (legacy, use enrich)
   - `copilot_tailer.py` — GitHub Copilot VS Code extension host log parser
-  - `dsh_parser.py` — DeepSeek Harness session log parser (enrich; native turn/step/callId causality, zstd-compressed JSONL under `~/.dsh/sessions/`)
+  - `dsh_parser.py` — DeepSeek Harness session log parser (enrich; native turn/step/callId causality, nested `run_code` dispatches, zstd-compressed JSONL under `~/.dsh/sessions/`; `session_forest()` exposes the ground-truth `parentSession` delegation tree for `dsh-tree`)
 - **`tests/test_invariants.py`** — Tests runtime invariants (serialization roundtrip, causality acyclicity, append-only integrity, renderer stability), not business logic.
 - **`tests/test_enrich.py`** — Tests for Claude Code project session parser.
 - **`tests/test_opencode_enrich.py`** — Tests for OpenCode DB session parser.

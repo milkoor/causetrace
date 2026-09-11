@@ -422,3 +422,44 @@ def test_next_step_splice_marked_mid_turn(dsh_home):
     assert "mid_turn" not in prompts[0].tool_input
     assert prompts[1].tool_input.get("mid_turn") is True
     assert "mid_turn" not in prompts[2].tool_input
+
+
+def _forest_session(root, name, header_extra=None):
+    header = {"type": "session", "version": 0, "id": name, "createdAt": T0,
+              "cwd": "/tmp/project", "delegationDepth": 0, "agentPreset": "default"}
+    header.update(header_extra or {})
+    sess_dir = root / "--ws--" / name
+    sess_dir.mkdir(parents=True)
+    (sess_dir / "session.jsonl").write_text(json.dumps(header) + "\n", encoding="utf-8")
+
+
+def test_session_forest_links_parent_session_headers(dsh_home):
+    from causetrace.hooks.dsh_parser import session_forest
+    _forest_session(dsh_home, "root-a")
+    # raw-uuid child naming the parent by full id
+    _forest_session(dsh_home, "child-b", {"parentSession": "root-a", "delegationDepth": 1})
+    # parent referenced without the session- prefix the child's id/dir carries
+    _forest_session(dsh_home, "session-child-c",
+                    {"id": "session-child-c", "parentSession": "child-C-less", "delegationDepth": 1})
+    _forest_session(dsh_home, "session-child-C-less",
+                    {"id": "session-child-C-less", "parentSession": "root-a"})
+    # dangling parent: kept as a root, parent value preserved verbatim
+    _forest_session(dsh_home, "orphan-d", {"parentSession": "gone-e"})
+
+    forest = session_forest(homes=[dsh_home])
+    assert forest["edges"] == 3
+    assert sorted(forest["children"]["root-a"]) == ["child-b", "session-child-C-less"]
+    # "child-C-less" canonicalized onto the session- prefixed id
+    assert forest["children"]["session-child-C-less"] == ["session-child-c"]
+    assert sorted(forest["roots"]) == ["orphan-d", "root-a"]
+    assert forest["nodes"]["orphan-d"]["parent_session"] == "gone-e"
+    assert forest["nodes"]["child-b"]["delegation_depth"] == 1
+
+
+def test_session_forest_meta_in_list_sessions(dsh_home):
+    _forest_session(dsh_home, "s-head", {"parentSession": "p", "agentPreset": "habits",
+                                         "delegationDepth": 2})
+    meta = list_sessions()[0]
+    assert meta["parent_session"] == "p"
+    assert meta["agent_preset"] == "habits"
+    assert meta["delegation_depth"] == 2

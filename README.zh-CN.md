@@ -131,6 +131,7 @@ causetrace enrich-hermes <session_id> --save
 # DeepSeek Harness — 从会话日志提取原生因果结构
 causetrace enrich-dsh-sessions
 causetrace enrich-dsh <session_id> --save
+causetrace dsh-tree                                   # 会话之间的委托森林
 
 # 基于日志的 Agent — 扫描并保存（启发式因果推断）
 causetrace opencode --save
@@ -269,6 +270,7 @@ causetrace compare <session_a> <session_b>
 | `causetrace enrich-hermes <id> [--save]` | 从 Hermes Agent SQLite 会话提取 |
 | `causetrace enrich-dsh-sessions` | 列出 DeepSeek Harness 会话（可用 `--dsh-home` 指向备份目录） |
 | `causetrace enrich-dsh <id> [--save]` | 从 DSH 会话日志提取（原生因果结构） |
+| `causetrace dsh-tree [<id>] [--home]` | DSH 跨会话委托森林（头记录中的真实 `parentSession` 边） |
 | `causetrace opencode [--save]` | 扫描 OpenCode 日志 |
 | `causetrace aider [--save] -- [args]` | 带追踪运行 Aider |
 | `causetrace continue [--save]` | 扫描 Continue.dev 日志 |

@@ -182,7 +182,7 @@ carries runtime-native parent links (see `causetrace fidelity`).
 
 ### `hooks/dsh_parser.py`
 - **Depends on:** `core.ToolEvent`; optional `zstandard` (falls back to `zstd` CLI) for `.jsonl.zstd` session logs
-- **Used by:** `cli.py` → `enrich-dsh`, `enrich-dsh-sessions`, `doctor`
+- **Used by:** `cli.py` → `enrich-dsh`, `enrich-dsh-sessions`, `dsh-tree`, `doctor`
 - **Note:** consumes DSH's native `turn`/`step`/`callId` metadata — no heuristic chaining; parallel-call fan-out and multi-parent fan-in are first-class. v2 adds nested `run_code` inner dispatches (`tool/code-dispatch*` pairs, hierarchical `subCallId`) and `mid_turn` marking of `next-step` inbox splices
 
 ### `hooks/opencode_tailer.py` (legacy)
@@ -237,6 +237,7 @@ The CLI is the **single integration point** — it wires all hooks/parsers to us
 | `enrich-hermes` | `enrich_hermes_session()` | hooks/hermes_parser |
 | `enrich-hermes-sessions` | `list_hermes_sessions()` | hooks/hermes_parser |
 | `enrich-dsh` | `enrich_dsh_session()` | hooks/dsh_parser |
+| `dsh-tree` | `session_forest()` | hooks/dsh_parser |
 | `enrich-dsh-sessions` | `list_dsh_sessions()` | hooks/dsh_parser |
 | `validate` | inline (uses `validate_session` from core) | core |
 | `validate --all` | inline (uses `list_sessions`, `validate_session`) | core |

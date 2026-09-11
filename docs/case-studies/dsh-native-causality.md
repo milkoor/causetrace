@@ -126,11 +126,18 @@ first parser pass deliberately skipped:
    **44 mid-turn interventions out of 137 "roots"** — the tools-per-turn
    figures below under-count real human steering; the "autonomous" session
    still takes 14 interventions across 60 turns.
-3. **No cross-session edges exist to extract.** Zero `parentSessionId` in
-   all 577 headers; only 4 visible `subagent` tool calls against 402
-   `delegationDepth=1` sessions — sub-agents are mostly spawned out-of-band
-   (495 of 508 backup sessions run the `habits` preset). Pressure #005's
-   delegation gap is a runtime-side missing link, not a causetrace one.
+3. **Cross-session delegation IS logged — at the session level.** An initial
+   header scan reported zero parent links; that was a scan bug: session
+   headers are flat records and the script only inspected `data`. Re-checked:
+   every delegated session (402/402 across 577) carries `parentSession` in
+   its header, 100% resolvable to a present session directory. The forest is
+   flat (all depth 1), with 25 parent sessions — the "autonomous" hub 762a
+   alone spawned **84 child sessions**, df4c 56 — and its spawn calls ride
+   the nested `run_code` dispatch channel (`inner subagent ×5` visible),
+   which is why v1-era parent-side tool-call scans found only 4 delegations.
+   causetrace now renders this ground-truth forest read-only as
+   `causetrace dsh-tree` (`session_forest()` in `dsh_parser.py`); event-level
+   parent→child edges remain open schema pressure (#005).
 
 ## Behavioural signatures (patterns)
 

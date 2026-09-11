@@ -37,6 +37,7 @@ from .hooks.hermes_parser import parse_session as enrich_hermes_session, list_se
 from .hooks.dsh_parser import (
     parse_session as enrich_dsh_session,
     list_sessions as list_dsh_sessions,
+    session_forest as dsh_session_forest,
     set_sessions_dir as set_dsh_sessions_dir,
     SESSIONS_DIR as DSH_SESSIONS_DIR,
 )
@@ -291,6 +292,11 @@ def cli(argv: list[str] | None = None) -> None:
     p_dsh_enrich.add_argument("--upsert", action="store_true", help="Save only events not already present")
     p_dsh_enrich.add_argument("--dry-run", action="store_true", help="Show upsert counts without writing")
     p_dsh_enrich.add_argument("--output", "-o", action="store_true", help="Show full timeline")
+
+    p_dsh_tree = sub.add_parser("dsh-tree", help="Render the DSH cross-session delegation forest (parentSession headers)")
+    p_dsh_tree.add_argument("session_id", nargs="?", help="Show lineage (ancestors + subtree) of one session")
+    p_dsh_tree.add_argument("--home", action="append", help="DSH home directory to scan (repeatable; default: ~/.dsh)")
+    p_dsh_tree.add_argument("--json", action="store_true", help="Machine-readable output")
 
     p_val = sub.add_parser("validate", help="Validate session integrity")
     p_val.add_argument("session_id", nargs="?", help="Session ID (default: latest)")
@@ -763,6 +769,59 @@ def cli(argv: list[str] | None = None) -> None:
         summary = _persist_imported_events(store, args.session_id, events, args)
         if summary and summary["written"]:
             _auto_detect_intervention_tags(args.session_id)
+
+    elif args.command == "dsh-tree":
+        forest = dsh_session_forest(homes=args.home)
+        nodes, children = forest["nodes"], forest["children"]
+        if args.session_id:
+            sid = next((k for k in nodes if k == args.session_id
+                        or (len(args.session_id) >= 8 and args.session_id in k)), None)
+            if sid is None:
+                print(f"Unknown DSH session: {args.session_id}")
+                sys.exit(1)
+            chain = []
+            cur = sid
+            while cur and cur in nodes:
+                chain.append(cur)
+                cur = nodes[cur]["parent_session"]
+                if cur in (chain or []):
+                    break
+            subtree = []
+
+            def _walk(s, lvl):
+                subtree.append((lvl, s))
+                for c in sorted(children.get(s, [])):
+                    _walk(c, lvl + 1)
+            _walk(sid, 0)
+            if args.json:
+                print(json.dumps({"session": sid, "ancestry": chain,
+                                  "subtree": [s for _, s in subtree]}, indent=2))
+            else:
+                print(f"Lineage of {sid}  [{nodes[sid]['agent_preset'] or '?'}]")
+                for i, s in enumerate(chain):
+                    n = nodes[s]
+                    tag = "  (this)" if s == sid else ""
+                    print(f"  {'  ' * i}↑ {s}  [{n['agent_preset'] or '?'}, d={n['delegation_depth']}]{tag}")
+                kids = [x for x in subtree if x[0] > 0]
+                print(f"  children ({len(kids)}):")
+                for lvl, s in kids:
+                    print(f"    {'  ' * (lvl - 1)}• {s}  [{nodes[s]['agent_preset'] or '?'}]")
+        else:
+            if args.json:
+                print(json.dumps(forest, indent=2, default=str))
+            else:
+                parents = sorted(children.items(), key=lambda kv: -len(kv[1]))
+                quiet_roots = [r for r in forest["roots"] if r not in children]
+                print(f"DSH delegation forest: {len(nodes)} sessions, {forest['edges']} delegation edges, "
+                      f"{len(parents)} parent sessions, {len(quiet_roots)} undelegated roots")
+                for p, kids in parents:
+                    n = nodes.get(p, {})
+                    print(f"  {p}  [{n.get('agent_preset') or '?'}, {len(kids)} children]")
+                    for c in kids[:8]:
+                        cn = nodes[c]
+                        print(f"    • {c}  [{cn['agent_preset'] or '?'}] {(cn['created'] or '?')[:16]}")
+                    if len(kids) > 8:
+                        print(f"    … and {len(kids) - 8} more")
 
     elif args.command == "stats":
         sid, events = _load(args.session_id)

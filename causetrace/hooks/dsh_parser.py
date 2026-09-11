@@ -281,6 +281,9 @@ def list_sessions(max_peek_bytes: int = 2_000_000) -> List[Dict[str, Any]]:
             "model": None,
             "cwd": None,
             "created": None,
+            "parent_session": None,
+            "delegation_depth": None,
+            "agent_preset": None,
         }
         try:
             text = _read_text(f, max_bytes=max_peek_bytes)
@@ -296,6 +299,9 @@ def list_sessions(max_peek_bytes: int = 2_000_000) -> List[Dict[str, Any]]:
                 meta["session_id"] = obj.get("id") or meta["session_id"]
                 meta["cwd"] = obj.get("cwd")
                 meta["created"] = _ms_to_iso(obj.get("createdAt"))
+                meta["parent_session"] = obj.get("parentSession")
+                meta["delegation_depth"] = obj.get("delegationDepth")
+                meta["agent_preset"] = obj.get("agentPreset")
             elif t == _SESSION_TITLE:
                 meta["title"] = _record_data(obj).get("title")
             elif t == _REQUEST_HEADER and not meta["model"]:
@@ -307,6 +313,103 @@ def list_sessions(max_peek_bytes: int = 2_000_000) -> List[Dict[str, Any]]:
                 break
         sessions.append(meta)
     return sessions
+
+
+# ---------------------------------------------------------------------------
+# cross-session delegation forest
+
+
+def session_forest(homes: Optional[List[Any]] = None) -> Dict[str, Any]:
+    """Build the DSH session-level delegation forest from session headers.
+
+    DSH persists ``parentSession`` in the header record of every delegated
+    session, so these edges are runtime ground truth — no inference. Reads
+    only the first header line of each session file (cheap peek).
+
+    ``homes`` accepts DSH home directories (or sessions roots); defaults to
+    the currently configured ``SESSIONS_DIR`` parent. Returns::
+
+        {"nodes": {session_id: meta}, "children": {parent: [ids]},
+         "roots": [ids], "edges": int}
+
+    where meta has id, parent_session, delegation_depth, agent_preset, cwd,
+    created, workspace, path.
+    """
+    roots_dirs: List[Path] = []
+    if homes:
+        for h in homes:
+            p = Path(h).expanduser()
+            roots_dirs.append(p / "sessions" if (p / "sessions").is_dir() else p)
+    else:
+        roots_dirs.append(SESSIONS_DIR)
+
+    nodes: Dict[str, Dict[str, Any]] = {}
+    by_name: Dict[str, str] = {}  # directory name -> resolved session id
+    for base in roots_dirs:
+        if not base.is_dir():
+            continue
+        for ws in sorted(base.iterdir()):
+            if not ws.is_dir():
+                continue
+            for sess in sorted(ws.iterdir()):
+                if not sess.is_dir():
+                    continue
+                files = sorted(sess.glob("session.jsonl*"))
+                if not files:
+                    continue
+                parent = None
+                meta: Dict[str, Any] = {
+                    "id": sess.name,
+                    "parent_session": None,
+                    "delegation_depth": None,
+                    "agent_preset": None,
+                    "cwd": None,
+                    "created": None,
+                    "workspace": ws.name,
+                    "path": str(files[0]),
+                }
+                for line in (_read_text(files[0], 8192) or "").splitlines():
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("type") == _SESSION:
+                        meta["id"] = obj.get("id") or sess.name
+                        meta["parent_session"] = obj.get("parentSession")
+                        meta["delegation_depth"] = obj.get("delegationDepth")
+                        meta["agent_preset"] = obj.get("agentPreset")
+                        meta["cwd"] = obj.get("cwd")
+                        meta["created"] = _ms_to_iso(obj.get("createdAt"))
+                        parent = obj.get("parentSession")
+                    break
+                nodes[meta["id"]] = meta
+                by_name[sess.name] = meta["id"]
+
+    def resolve(x: Optional[str]) -> Optional[str]:
+        """Map a header parentSession value onto a known session id."""
+        if not x or x in nodes:
+            return x
+        for cand in ("session-" + x, x.replace("session-", "", 1)):
+            if cand in by_name:
+                return by_name[cand]
+        return None
+
+    children: Dict[str, List[str]] = {}
+    for sid, meta in nodes.items():
+        p = resolve(meta["parent_session"])
+        if p is not None and p != sid:
+            meta["parent_session"] = p
+            children.setdefault(p, []).append(sid)
+    for lst in children.values():
+        lst.sort(key=lambda s: (nodes[s]["created"] or "", s))
+    roots = [sid for sid in nodes if sid not in
+             {c for lst in children.values() for c in lst}]
+    return {
+        "nodes": nodes,
+        "children": children,
+        "roots": sorted(roots, key=lambda s: (nodes[s]["created"] or "", s)),
+        "edges": sum(len(v) for v in children.values()),
+    }
 
 
 # ---------------------------------------------------------------------------

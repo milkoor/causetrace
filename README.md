@@ -134,6 +134,7 @@ causetrace enrich-hermes <session_id> --save
 # DeepSeek Harness — enrich session logs with native causal structure
 causetrace enrich-dsh-sessions
 causetrace enrich-dsh <session_id> --save
+causetrace dsh-tree                                   # which session delegated to which
 
 # Log-based agents — scan and save (heuristic causality)
 causetrace opencode --save
@@ -273,6 +274,7 @@ Every event is a `ToolEvent`. The four causal fields (`parent_event_id`, `sessio
 | `causetrace enrich-hermes <id> [--save]` | Enrich from Hermes Agent SQLite session |
 | `causetrace enrich-dsh-sessions` | List DeepSeek Harness sessions |
 | `causetrace enrich-dsh <id> [--save]` | Enrich from DSH session log (native causality) |
+| `causetrace dsh-tree [<id>] [--home]` | DSH cross-session delegation forest (ground-truth `parentSession` headers) |
 | `causetrace opencode [--save]` | Scan OpenCode logs |
 | `causetrace aider [--save] -- [args]` | Run aider with tracing |
 | `causetrace continue [--save]` | Scan Continue.dev logs |

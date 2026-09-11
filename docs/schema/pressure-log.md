@@ -221,6 +221,15 @@ cross-session edges, and an error flag. Revisit when a second runtime with
 measured timing (or a delegation-aware consumer) shows up — per semantic
 restraint, one runtime is not enough evidence to promote new fields.
 
+**Follow-up (same day, Pressure #006 scan)**: the cross-session half of this
+was worse than it looked in our favor — DSH *does* persist delegation
+grounds: all 402 delegated session headers carry `parentSession`, every one
+resolving to a real session directory. `causetrace dsh-tree` (read-only
+`session_forest()`) now renders the forest without touching the schema;
+what remains genuinely inexpressible is the *event-level* edge (parent's
+`subagent` call → child's first reasoning step), since `parent_event_id`
+stays session-scoped by design.
+
 ## Pressure #006
 
 **Date**: 2026-09-11

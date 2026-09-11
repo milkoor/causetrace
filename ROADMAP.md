@@ -8,13 +8,21 @@
 - Measure how often native parent links differ from timestamp-based inference.
   - Shipped as `causetrace fidelity <session>`: re-runs the temporal
     heuristics on a native session and reports edge recall/precision and
-    fan-in reproduction. On the first four DSH sessions it shows 62–88%
-    child-level agreement and **0 / 79 true fan-in nodes exactly reproduced**;
-    batched across 48 DSH sessions (≥150 events): ~70% mean agreement and
-    **0 / 724 fan-in nodes reproduced** (fan-in density vs agreement r = −0.39).
+    fan-in reproduction. On the first four DSH sessions: 47–76% child-level
+    agreement (parser v2 graphs) and **0 / 89 true fan-in nodes exactly
+    reproduced**; batched across 48 DSH sessions (≥150 events, v1 graphs):
+    ~70% mean agreement and **0 / 724 fan-in nodes reproduced** (fan-in
+    density vs agreement r = −0.39). Deeper ground truth scores *worse* —
+    shallow graphs only looked predictable.
     Caveat: the metric is only meaningful for runtimes that persist *native*
     links; on log-chained parsers (whose parents are themselves inferred) it
     measures parser-vs-heuristics agreement, not ground truth.
+- Observe delegation without bending the event schema.
+  - Shipped `causetrace dsh-tree`: session-level delegation forest built from
+    DSH's ground-truth `parentSession` headers (measured: 402/402 edges
+    resolvable over 577 sessions, one hub with 84 children). Event-level
+    parent→child edges remain a schema question (Pressure #005), deliberately
+    not hacked around.
 - Make exported fixtures easier to sanitize and submit in pull requests.
 
 ## Under Evaluation
