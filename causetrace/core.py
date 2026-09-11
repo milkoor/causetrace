@@ -471,34 +471,50 @@ def validate_session(events: List[ToolEvent], raw_lines: Optional[List[str]] = N
             orphans += 1
     result["orphan_count"] = orphans
 
-    # Cycle detection: walk each parent chain, detect loops
-    # Check ALL parent edges, not just the first one
-    visited_global: set = set()
+    # Cycle detection: iterative three-colour DFS over parent edges.
+    # The previous path-copying walk degraded quadratically (worse on merged
+    # DAGs) for long linear sessions with thousands of events.
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict = {}
+    parents_cache: dict = {}
+
+    def local_parents(node_id: str) -> List[str]:
+        cached = parents_cache.get(node_id)
+        if cached is None:
+            cached = [p for p in _parse_parents(by_id[node_id]) if p in by_id]
+            parents_cache[node_id] = cached
+        return cached
+
     for ev in events:
-        if ev.event_id in visited_global:
+        start = ev.event_id
+        if color.get(start, WHITE) != WHITE:
             continue
-        # BFS/DFS across all edges to find cycles reachable from this node
-        stack = [(ev.event_id, [ev.event_id])]
+        color[start] = GRAY
+        stack: List[tuple] = [(start, iter(local_parents(start)))]
         while stack:
-            node_id, path = stack.pop()
-            if node_id in visited_global and len(path) == 1:
-                continue
-            node = by_id.get(node_id)
-            if not node:
-                continue
-            parents = _parse_parents(node)
-            for pid in parents:
-                if pid in by_id:
-                    if pid in path:
-                        result["cycles"].append(
-                            f"Cycle detected: {' → '.join(path[path.index(pid):] + [pid])}"
-                        )
-                        result["errors"].append(
-                            f"Cycle in parent chain near {pid}"
-                        )
-                    else:
-                        stack.append((pid, path + [pid]))
-            visited_global.add(node_id)
+            node_id, parents_it = stack[-1]
+            descended = False
+            for pid in parents_it:
+                state = color.get(pid, WHITE)
+                if state == GRAY:
+                    # Back edge: pid sits on the current child→parent stack
+                    path = [nid for nid, _ in stack]
+                    cycle = path[path.index(pid):] + [pid]
+                    result["cycles"].append(
+                        f"Cycle detected: {' → '.join(cycle)}"
+                    )
+                    result["errors"].append(
+                        f"Cycle in parent chain near {pid}"
+                    )
+                elif state == WHITE:
+                    color[pid] = GRAY
+                    stack.append((pid, iter(local_parents(pid))))
+                    descended = True
+                    break
+                # BLACK: already fully explored; no cycle reachable through it
+            if not descended:
+                color[node_id] = BLACK
+                stack.pop()
 
     # Timestamp check
     for ev in events:
