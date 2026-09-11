@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 - 2026-09-11
+
+- Add the DeepSeek Harness session-log bridge (`enrich-dsh`): native `turn`/`step`/`callId` causality — parallel fan-out, multi-parent fan-in, measured `duration_ms`, zstd JSONL — including nested `run_code` inner tool dispatches and mid-turn steering (`mid_turn`) markers.
+- Add the Hermes Agent `state.db` session parser bridge (`enrich-hermes`).
+- Add `causetrace fidelity`: measures timestamp-based inference against native ground-truth parent links (across the DSH corpus the heuristics reproduce 0 of 724 true fan-in nodes).
+- Add `causetrace dsh-tree`: renders the session-level delegation forest from DSH's ground-truth `parentSession` headers (402/402 edges resolvable).
+- Fix quadratic slowdown in `validate_session` cycle detection.
+- Add the first sanitized DSH parallel-investigation example trace, the DSH native-causality case study, and schema pressures #005–#006.
+
 ## 0.3.0 - 2026-06-23
 
 - Add the AI Behavior Science OS v0.3 stack: descriptor-only BDE, read-only CRDD subset compilation, and external-only CERC experiment planning.

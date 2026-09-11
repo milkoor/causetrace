@@ -57,7 +57,7 @@ except Exception:
         from importlib.metadata import version as _import_version
         _CAUSETRACE_VERSION = _import_version("causetrace")
     except Exception:
-        _CAUSETRACE_VERSION = "0.3.0"
+        _CAUSETRACE_VERSION = "0.3.1"
 
 
 def _check_result(label: str, ok: bool, detail: str = "") -> tuple[bool, str, str]:

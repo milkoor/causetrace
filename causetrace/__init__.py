@@ -7,7 +7,7 @@ from .hooks.codex_parser import parse_session as enrich_codex_session, list_sess
 from .hooks.hermes_parser import parse_session as enrich_hermes_session, list_sessions as list_hermes_sessions
 from .hooks.dsh_parser import parse_session as enrich_dsh_session, list_sessions as list_dsh_sessions, session_forest as dsh_session_forest
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __all__ = [
     "ToolEvent", "TraceRecorder", "JSONStore", "TimelineRenderer",
     "ReplayEngine", "build_tree", "infer_relations", "build_causal_graph", "cli",
